@@ -28,6 +28,13 @@ src-tauri/target/
 # Vite / webview build output
 webview/dist/
 webview/.vite/
+webview/*.tsbuildinfo
+webview/vite.config.js
+webview/vite.config.d.ts
+
+# Tauri auto-generated
+shell/gen/
+shell/target/
 
 # Local dev databases + tokens (NEVER commit)
 *.sqlite

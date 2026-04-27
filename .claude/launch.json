@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "webview",
+      "runtimeExecutable": "./webview/dev.sh",
+      "runtimeArgs": [],
+      "port": 5173
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  acceptance-p0:
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            ingester/package-lock.json
+            webview/package-lock.json
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            shell/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('shell/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Run P0 acceptance
+        env:
+          MAILMIND_HEALTH_SKIP_GEMINI: "1"
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          ./acceptance/p0.sh
