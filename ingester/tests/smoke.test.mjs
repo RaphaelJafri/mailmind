@@ -15,6 +15,13 @@ const { threadContentHash } = await import('../src/lib/thread-hash.mjs');
 const { extractBodies, normalizeMessage } = await import('../src/lib/gmail-client.mjs');
 const { classifyThread, isMarketingCandidate } = await import('../src/lib/filters.mjs');
 const { readSyncState } = await import('../src/sync.mjs');
+const {
+  loadOAuthConfig,
+  saveOAuthConfig,
+  deleteOAuthConfig,
+  isOAuthConfigured,
+  oauthConfigPath,
+} = await import('../src/lib/oauth-config.mjs');
 
 test('openRaw creates schema idempotently', () => {
   const db1 = openRaw();
@@ -200,4 +207,89 @@ test('readSyncState reflects a written sync_state row', () => {
   equal(state.last_history_id, '12345');
   equal(state.last_sync_at, '2026-04-27T15:00:00Z');
   equal(state.oldest_synced_date, '2026-03-28T00:00:00Z');
+});
+
+test('oauth-config: loadOAuthConfig returns null on a fresh data dir', () => {
+  // The autouse-style env override at the top of this file puts each
+  // test run in its own tmp dir. With no env vars + no file, loader
+  // returns null.
+  delete process.env.GOOGLE_CLIENT_ID;
+  delete process.env.GOOGLE_CLIENT_SECRET;
+  // Belt: also clear any saved file from a prior test in this run.
+  deleteOAuthConfig();
+  equal(loadOAuthConfig(), null);
+  equal(isOAuthConfigured(), false);
+});
+
+test('oauth-config: saveOAuthConfig round-trips client_id + client_secret', () => {
+  delete process.env.GOOGLE_CLIENT_ID;
+  delete process.env.GOOGLE_CLIENT_SECRET;
+  deleteOAuthConfig();
+  const saved = saveOAuthConfig({
+    client_id: '1234.apps.googleusercontent.com',
+    client_secret: 'GOCSPX-test',
+  });
+  ok(saved.saved_at);
+  ok(saved.path.endsWith('oauth_client.json'));
+
+  const loaded = loadOAuthConfig();
+  ok(loaded);
+  equal(loaded.client_id, '1234.apps.googleusercontent.com');
+  equal(loaded.client_secret, 'GOCSPX-test');
+  equal(loaded.source, 'file');
+  ok(isOAuthConfigured());
+});
+
+test('oauth-config: env vars win when both env + file set', () => {
+  // Save to disk first.
+  delete process.env.GOOGLE_CLIENT_ID;
+  delete process.env.GOOGLE_CLIENT_SECRET;
+  deleteOAuthConfig();
+  saveOAuthConfig({
+    client_id: 'disk-id.apps.googleusercontent.com',
+    client_secret: 'GOCSPX-from-disk',
+  });
+  // Now set env vars too.
+  process.env.GOOGLE_CLIENT_ID = 'env-id.apps.googleusercontent.com';
+  process.env.GOOGLE_CLIENT_SECRET = 'GOCSPX-from-env';
+
+  const loaded = loadOAuthConfig();
+  ok(loaded);
+  equal(loaded.source, 'env');
+  equal(loaded.client_id, 'env-id.apps.googleusercontent.com');
+  // Cleanup so other tests aren't poisoned.
+  delete process.env.GOOGLE_CLIENT_ID;
+  delete process.env.GOOGLE_CLIENT_SECRET;
+});
+
+test('oauth-config: saveOAuthConfig rejects missing fields', () => {
+  delete process.env.GOOGLE_CLIENT_ID;
+  delete process.env.GOOGLE_CLIENT_SECRET;
+  throws(() => saveOAuthConfig({ client_id: '', client_secret: 'x' }));
+  throws(() => saveOAuthConfig({ client_id: 'x', client_secret: '' }));
+});
+
+test('oauth-config: deleteOAuthConfig is idempotent', () => {
+  delete process.env.GOOGLE_CLIENT_ID;
+  delete process.env.GOOGLE_CLIENT_SECRET;
+  saveOAuthConfig({
+    client_id: 'x.apps.googleusercontent.com',
+    client_secret: 'GOCSPX-y',
+  });
+  equal(deleteOAuthConfig(), true);
+  equal(deleteOAuthConfig(), false);
+  equal(loadOAuthConfig(), null);
+});
+
+test('oauth-config: file is mode 0600', async () => {
+  delete process.env.GOOGLE_CLIENT_ID;
+  delete process.env.GOOGLE_CLIENT_SECRET;
+  saveOAuthConfig({
+    client_id: 'x.apps.googleusercontent.com',
+    client_secret: 'GOCSPX-y',
+  });
+  const { statSync } = await import('node:fs');
+  const mode = statSync(oauthConfigPath()).mode & 0o777;
+  equal(mode, 0o600);
+  deleteOAuthConfig();
 });

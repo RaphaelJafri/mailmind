@@ -13,10 +13,23 @@ import { createHash } from 'node:crypto';
 import express from 'express';
 import { existsSync } from 'node:fs';
 
+import { unlinkSync } from 'node:fs';
+
 import { dbPath, openRaw, openDerived } from './lib/db.mjs';
-import { tokensExist } from './lib/gmail-client.mjs';
-import { dataDir } from './lib/paths.mjs';
+import {
+  tokensExist,
+  authorizedOAuthClient,
+  makeGmailClient,
+} from './lib/gmail-client.mjs';
+import {
+  loadOAuthConfig,
+  saveOAuthConfig,
+  deleteOAuthConfig,
+  isOAuthConfigured,
+} from './lib/oauth-config.mjs';
+import { dataDir, tokenPath } from './lib/paths.mjs';
 import { runSync, readSyncState } from './sync.mjs';
+import { runLoopbackFlow } from './auth.mjs';
 
 const DEFAULT_PORT = 8766;
 const STARTED_AT = new Date().toISOString();
@@ -163,6 +176,210 @@ app.post('/gmail/drafts', (req, res) => {
     note:
       'P4a stub. Wire users.drafts.create here once gmail.compose scope is granted.',
   });
+});
+
+// ----- /auth — Gmail connection management -------------------------------
+//
+// The dashboard's Settings → Gmail Connection panel drives all of this.
+// Three states the UI can land in:
+//   A. No OAuth client configured  → POST /auth/config to save creds
+//   B. Configured but no tokens    → POST /auth/start to OAuth
+//   C. Connected                   → DELETE /auth/tokens to disconnect
+//
+// We track in-flight loopback flows in a module-level map so the UI can
+// poll progress (the actual OAuth round-trip is async — Google redirects
+// to our loopback server when the user clicks "Allow").
+
+const _authFlows = new Map(); // state_token -> { flow, started_at, expires_at }
+const AUTH_FLOW_TTL_MS = 5 * 60 * 1000;
+
+function _newStateToken() {
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
+function _gcAuthFlows() {
+  const now = Date.now();
+  for (const [token, entry] of _authFlows.entries()) {
+    if (entry.expires_at < now) {
+      try { entry.flow.shutdown(); } catch {}
+      _authFlows.delete(token);
+    }
+  }
+}
+
+async function _resolveAccountEmail() {
+  if (!tokensExist()) return null;
+  const cfg = loadOAuthConfig();
+  if (!cfg) return null;
+  try {
+    const oauth = authorizedOAuthClient({
+      clientId: cfg.client_id,
+      clientSecret: cfg.client_secret,
+    });
+    const profile = await makeGmailClient(oauth).getProfile();
+    return profile.emailAddress;
+  } catch {
+    return null;
+  }
+}
+
+app.get('/auth/status', async (_req, res) => {
+  const cfg = loadOAuthConfig();
+  const configured = !!cfg;
+  const has_tokens = tokensExist();
+  const account_email = has_tokens ? await _resolveAccountEmail() : null;
+  res.json({
+    configured,
+    config_source: cfg?.source ?? null,
+    config_saved_at: cfg?.saved_at ?? null,
+    has_tokens,
+    account_email,
+    // The truncated client_id helps the UI confirm "yes, this is the one
+    // I just pasted" without exposing the secret.
+    client_id_preview: cfg
+      ? cfg.client_id.length > 18
+        ? cfg.client_id.slice(0, 8) + '…' + cfg.client_id.slice(-10)
+        : cfg.client_id
+      : null,
+  });
+});
+
+app.post('/auth/config', (req, res) => {
+  const { client_id, client_secret } = req.body || {};
+  if (!client_id || !client_secret) {
+    return res.status(400).json({
+      error: 'missing_fields',
+      message: 'client_id and client_secret are required.',
+    });
+  }
+  // Refuse to overwrite env-var-based config — that's a developer setup,
+  // not something the dashboard should mess with.
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    return res.status(409).json({
+      error: 'env_in_use',
+      message:
+        'OAuth credentials are currently sourced from environment variables. ' +
+        'Unset GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET in ingester/.env to use ' +
+        'the dashboard-managed config.',
+    });
+  }
+  try {
+    const saved = saveOAuthConfig({ client_id, client_secret });
+    res.json({
+      ok: true,
+      saved_at: saved.saved_at,
+      path: saved.path,
+      client_id_preview:
+        saved.client_id.length > 18
+          ? saved.client_id.slice(0, 8) + '…' + saved.client_id.slice(-10)
+          : saved.client_id,
+    });
+  } catch (err) {
+    res.status(400).json({ error: 'save_failed', message: err.message });
+  }
+});
+
+app.delete('/auth/config', (_req, res) => {
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    return res.status(409).json({
+      error: 'env_in_use',
+      message:
+        'OAuth credentials are sourced from environment variables. The dashboard ' +
+        'cannot delete them — edit ingester/.env directly.',
+    });
+  }
+  const deleted = deleteOAuthConfig();
+  res.json({ deleted });
+});
+
+app.post('/auth/start', async (_req, res) => {
+  _gcAuthFlows();
+  const cfg = loadOAuthConfig();
+  if (!cfg) {
+    return res.status(412).json({
+      error: 'oauth_not_configured',
+      message:
+        'Save OAuth client credentials first via Settings → Gmail Connection.',
+    });
+  }
+  // Refuse to start a second flow concurrently — the loopback ports
+  // would collide and Google's prompt only handles one outstanding flow
+  // at a time anyway.
+  for (const [, entry] of _authFlows.entries()) {
+    if (entry.flow.state.status === 'waiting') {
+      return res.status(409).json({
+        error: 'auth_in_flight',
+        message: 'An auth flow is already in progress. Complete or cancel it first.',
+      });
+    }
+  }
+
+  try {
+    const flow = await runLoopbackFlow({
+      clientId: cfg.client_id,
+      clientSecret: cfg.client_secret,
+      openBrowser: false, // dashboard opens it in a tab via window.open
+    });
+    const token = _newStateToken();
+    _authFlows.set(token, {
+      flow,
+      started_at: Date.now(),
+      expires_at: Date.now() + AUTH_FLOW_TTL_MS,
+    });
+    res.json({
+      ok: true,
+      state_token: token,
+      auth_url: flow.authUrl,
+      redirect_uri: flow.redirectUri,
+      expires_in_s: AUTH_FLOW_TTL_MS / 1000,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'flow_failed', message: err.message });
+  }
+});
+
+app.get('/auth/poll/:token', (req, res) => {
+  _gcAuthFlows();
+  const entry = _authFlows.get(req.params.token);
+  if (!entry) {
+    return res.status(404).json({
+      error: 'unknown_state',
+      message: 'Auth flow not found or already cleaned up. Re-start the flow.',
+    });
+  }
+  const { status, account_email, error } = entry.flow.state;
+  // Once the flow lands a terminal state, drop it from the map after one
+  // more poll so the UI doesn't keep seeing stale state.
+  if (status === 'authorized' || status === 'error') {
+    setTimeout(() => _authFlows.delete(req.params.token), 1000);
+  }
+  res.json({
+    status,
+    account_email: account_email ?? null,
+    error: error ?? null,
+    age_ms: Date.now() - entry.started_at,
+  });
+});
+
+app.post('/auth/cancel/:token', (req, res) => {
+  const entry = _authFlows.get(req.params.token);
+  if (!entry) return res.json({ cancelled: false });
+  try { entry.flow.shutdown(); } catch {}
+  _authFlows.delete(req.params.token);
+  res.json({ cancelled: true });
+});
+
+app.delete('/auth/tokens', (_req, res) => {
+  // Disconnect Gmail — remove the token file. OAuth client config stays
+  // (so re-connect is one click). Also revokes from Google's side
+  // best-effort, but we don't fail the request if revoke fails.
+  const path = tokenPath();
+  try {
+    if (tokensExist()) unlinkSync(path);
+    res.json({ disconnected: true });
+  } catch (err) {
+    res.status(500).json({ error: 'delete_failed', message: err.message });
+  }
 });
 
 // ----- /sync_state — read-only "when did we last sync" -------------------

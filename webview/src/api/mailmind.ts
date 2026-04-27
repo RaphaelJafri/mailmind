@@ -116,6 +116,75 @@ export function syncNow(opts: { days?: number; full?: boolean } = {}) {
   return postJson<SyncRunResult>(`${INGESTER_URL}/sync`, opts);
 }
 
+// ----- Gmail OAuth (Settings → Gmail Connection) -----
+
+export interface AuthStatus {
+  configured: boolean;
+  config_source: "env" | "file" | null;
+  config_saved_at: string | null;
+  has_tokens: boolean;
+  account_email: string | null;
+  client_id_preview: string | null;
+}
+
+export interface AuthStartResult {
+  ok: true;
+  state_token: string;
+  auth_url: string;
+  redirect_uri: string;
+  expires_in_s: number;
+}
+
+export interface AuthPoll {
+  status: "waiting" | "authorized" | "error";
+  account_email: string | null;
+  error: string | null;
+  age_ms: number;
+}
+
+export function getAuthStatus(signal?: AbortSignal) {
+  return getJson<AuthStatus>(`${INGESTER_URL}/auth/status`, signal);
+}
+
+export function saveOAuthConfig(req: { client_id: string; client_secret: string }) {
+  return postJson<{ ok: true; saved_at: string; path: string; client_id_preview: string }>(
+    `${INGESTER_URL}/auth/config`,
+    req,
+  );
+}
+
+export function deleteOAuthConfig() {
+  return fetch(`${INGESTER_URL}/auth/config`, { method: "DELETE" }).then(async (res) => {
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`/auth/config DELETE → ${res.status}: ${t}`);
+    }
+    return (await res.json()) as { deleted: boolean };
+  });
+}
+
+export function startAuth() {
+  return postJson<AuthStartResult>(`${INGESTER_URL}/auth/start`, {});
+}
+
+export function pollAuth(state_token: string, signal?: AbortSignal) {
+  return getJson<AuthPoll>(`${INGESTER_URL}/auth/poll/${state_token}`, signal);
+}
+
+export function cancelAuth(state_token: string) {
+  return postJson<{ cancelled: boolean }>(`${INGESTER_URL}/auth/cancel/${state_token}`, {});
+}
+
+export function disconnectGmail() {
+  return fetch(`${INGESTER_URL}/auth/tokens`, { method: "DELETE" }).then(async (res) => {
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`/auth/tokens DELETE → ${res.status}: ${t}`);
+    }
+    return (await res.json()) as { disconnected: boolean };
+  });
+}
+
 export function listContacts(limit = 200, signal?: AbortSignal) {
   return getJson<{ contacts: ContactRow[]; count: number }>(
     `${INGESTER_URL}/contacts?limit=${limit}`,

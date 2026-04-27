@@ -21,6 +21,7 @@ import {
 import { threadContentHash } from './lib/thread-hash.mjs';
 import { loadFilters, reclassifyAll } from './lib/filters.mjs';
 import { reportsDir } from './lib/paths.mjs';
+import { loadOAuthConfig } from './lib/oauth-config.mjs';
 
 function parseArgs(argv) {
   const args = { days: 30, full: false };
@@ -369,9 +370,13 @@ function writeReport({ startedAt, mode, summary, profile }) {
  * }>}
  */
 export async function runSync({ days = 30, full = false, log = console.log } = {}) {
-  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } = process.env;
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    const err = new Error('GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET missing');
+  const cfg = loadOAuthConfig();
+  if (!cfg) {
+    const err = new Error(
+      'No OAuth client configured. Open Settings → Gmail Connection in the ' +
+      'dashboard and paste your credentials, or set GOOGLE_CLIENT_ID/' +
+      'GOOGLE_CLIENT_SECRET in ingester/.env.'
+    );
     err.code = 'MISSING_OAUTH_CONFIG';
     throw err;
   }
@@ -379,8 +384,8 @@ export async function runSync({ days = 30, full = false, log = console.log } = {
   let oauth;
   try {
     oauth = authorizedOAuthClient({
-      clientId: GOOGLE_CLIENT_ID,
-      clientSecret: GOOGLE_CLIENT_SECRET,
+      clientId: cfg.client_id,
+      clientSecret: cfg.client_secret,
     });
   } catch (err) {
     if (err.code === 'NO_TOKENS') throw err;

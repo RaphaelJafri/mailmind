@@ -1027,6 +1027,101 @@ code {
   font-family: var(--mono);
 }
 
+/* ----- Settings → Gmail Connection -------------------------------------- */
+
+.auth-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.auth-panel--connected {
+  border-left: 3px solid var(--good);
+}
+
+.auth-panel__step {
+  display: grid;
+  grid-template-columns: 2.25rem 1fr;
+  gap: 0.5rem 0.75rem;
+}
+
+.auth-panel__step-num {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-family: var(--mono);
+}
+
+.auth-panel__step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.auth-panel__step-body--form {
+  gap: 0.6rem;
+}
+
+.auth-panel__guide-toggle {
+  align-self: flex-start;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.auth-panel__guide {
+  margin: 0.4rem 0 0 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.auth-panel__guide li {
+  line-height: 1.45;
+}
+
+.auth-panel__guide a {
+  color: var(--accent);
+}
+
+.auth-panel__guide code {
+  font-size: 0.8rem;
+}
+
+.auth-panel__connected {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.auth-panel__connected code {
+  font-size: 0.8rem;
+}
+
+.auth-panel__email {
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+.auth-panel__poll-msg {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 /* ----- Inbox: sync row -------------------------------------------------- */
 
 .inbox__sync-row {
