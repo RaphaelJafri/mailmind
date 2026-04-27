@@ -3,7 +3,12 @@
 Talks to the Tauri shell over localhost. Default port: 8765 (override via PORT
 env or --port flag).
 
-P0 surface: /health only. Real agent endpoints land in P1+ per BUILD.md §10.
+P0 surface: /health.
+P1 surface: /triage/run, /triage/proposals, /triage/proposals/{id}/{decide},
+            /extract/run, /tag/run, /tags, /agent_runs.
+
+Real agent endpoints land here. Other phases (relationship, drafts, query)
+extend in later milestones.
 """
 
 from __future__ import annotations
@@ -14,16 +19,22 @@ import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-from lib import gemini_runner, paths, vertex_config
+import extract_agent
+import tagger_agent
+import triage_agent
+from lib import db, gemini_runner, paths, vertex_config
 
 # Pin dotenv to mailmind/agents/.env only. Without an explicit path, dotenv
 # walks up the directory tree and picks up unrelated .env files (e.g. a
 # desktop-level one from another project), which silently overrides our
-# GCP project resolution. Pin it.
+# GCP project resolution.
 _AGENTS_ENV = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=_AGENTS_ENV, override=False)
 
@@ -35,8 +46,21 @@ async def lifespan(_app: FastAPI):  # noqa: ANN001
     yield
 
 
-app = FastAPI(title="mailmind-agents", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="mailmind-agents", version="0.2.0", lifespan=lifespan)
 
+# In production the Tauri webview shares an origin with the bundled assets,
+# but `npm run dev` serves the React app from Vite on :5173 which would
+# otherwise be CORS-blocked. The sidecars only listen on 127.0.0.1 so the
+# wildcard origin is safe here.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ----- /health -------------------------------------------------------------
 
 @app.get("/health")
 def health() -> dict:
@@ -79,6 +103,122 @@ def health() -> dict:
         },
     }
 
+
+# ----- /triage -------------------------------------------------------------
+
+class TriageRunRequest(BaseModel):
+    min_thread_count: int = 1
+    limit: int = 30
+
+
+@app.post("/triage/run")
+def triage_run(req: TriageRunRequest | None = None) -> dict:
+    req = req or TriageRunRequest()
+    return triage_agent.run(min_thread_count=req.min_thread_count, limit=req.limit)
+
+
+@app.get("/triage/proposals")
+def triage_proposals(status: str = "pending", limit: int = 100) -> dict:
+    proposals = triage_agent.list_proposals(status=status, limit=limit)
+    return {"proposals": proposals, "count": len(proposals)}
+
+
+class DecisionRequest(BaseModel):
+    decision: str  # "approve" | "reject"
+
+
+@app.post("/triage/proposals/{proposal_id}/decide")
+def triage_decide(proposal_id: str, req: DecisionRequest) -> dict:
+    try:
+        return triage_agent.decide(proposal_id, req.decision)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ----- /extract ------------------------------------------------------------
+
+class ExtractRunRequest(BaseModel):
+    thread_ids: list[str]
+    force: bool = False
+
+
+@app.post("/extract/run")
+def extract_run(req: ExtractRunRequest) -> dict:
+    """Sequential per-thread extract. ParallelAgent fan-out is a follow-up."""
+    if not req.thread_ids:
+        raise HTTPException(status_code=400, detail="thread_ids must be non-empty")
+    results: list[dict] = []
+    failures: list[dict] = []
+    for tid in req.thread_ids:
+        try:
+            results.append(extract_agent.run(tid, force=req.force))
+        except Exception as exc:  # noqa: BLE001
+            failures.append({"thread_id": tid, "error": f"{type(exc).__name__}: {exc}"})
+    return {
+        "extracted": results,
+        "failures": failures,
+        "count": len(results),
+        "failed": len(failures),
+    }
+
+
+# ----- /tag ----------------------------------------------------------------
+
+class TagRunRequest(BaseModel):
+    message_ids: list[str]
+
+
+@app.post("/tag/run")
+def tag_run(req: TagRunRequest) -> dict:
+    if not req.message_ids:
+        raise HTTPException(status_code=400, detail="message_ids must be non-empty")
+    results: list[dict] = []
+    failures: list[dict] = []
+    for mid in req.message_ids:
+        try:
+            results.append(tagger_agent.run(mid))
+        except Exception as exc:  # noqa: BLE001
+            failures.append({"message_id": mid, "error": f"{type(exc).__name__}: {exc}"})
+    return {"tagged": results, "failures": failures, "count": len(results), "failed": len(failures)}
+
+
+@app.get("/tags")
+def tags(kind: str | None = None, value: str | None = None, limit: int = 200) -> dict:
+    return {
+        "summary": tagger_agent.list_tag_summary(),
+        "tags": tagger_agent.list_tags(kind=kind, value=value, limit=limit),
+    }
+
+
+# ----- /agent_runs ---------------------------------------------------------
+
+@app.get("/agent_runs")
+def agent_runs(limit: int = 50, agent_name: str | None = None) -> dict:
+    with db.agent_runs() as conn:
+        if agent_name:
+            rows = conn.execute(
+                "SELECT * FROM agent_runs WHERE agent_name = ? "
+                "ORDER BY started_at DESC LIMIT ?",
+                (agent_name, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM agent_runs ORDER BY started_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+    return {"runs": [_row_to_dict(r) for r in rows]}
+
+
+def _row_to_dict(r: Any) -> dict:
+    d = dict(r)
+    if isinstance(d.get("stubbed"), int):
+        d["stubbed"] = bool(d["stubbed"])
+    return d
+
+
+# ----- main ----------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser()

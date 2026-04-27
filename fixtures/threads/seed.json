@@ -1,0 +1,72 @@
+{
+  "threads": [
+    {
+      "thread_id": "fix-thread-001",
+      "subject": "Re: intro to Adam re: senior eng role",
+      "sender": "morgan@northstar-talent.com",
+      "disposition": "unclassified",
+      "messages": [
+        {
+          "message_id": "fix-msg-001a",
+          "from_email": "morgan@northstar-talent.com",
+          "from_name": "Morgan Lin",
+          "to_emails": ["raphaeljafri@gmail.com"],
+          "cc_emails": [],
+          "subject": "intro to Adam re: senior eng role",
+          "body_plain": "Hey Raphael — wanted to put you in touch with Adam Moore at Vector Labs. They're hiring a senior eng. He'll reach out separately. Are you OK with me sharing your resume?",
+          "internal_date": "2026-04-22T14:05:00Z",
+          "is_from_user": false
+        },
+        {
+          "message_id": "fix-msg-001b",
+          "from_email": "raphaeljafri@gmail.com",
+          "from_name": "Raphael Jafri",
+          "to_emails": ["morgan@northstar-talent.com"],
+          "cc_emails": [],
+          "subject": "Re: intro to Adam re: senior eng role",
+          "body_plain": "Yes please, share away. I'll send you an updated resume by Friday.",
+          "internal_date": "2026-04-22T15:10:00Z",
+          "is_from_user": true
+        }
+      ]
+    },
+    {
+      "thread_id": "fix-thread-002",
+      "subject": "Your Substack subscription this week",
+      "sender": "newsletter@stratechery.com",
+      "disposition": "unclassified",
+      "messages": [
+        {
+          "message_id": "fix-msg-002a",
+          "from_email": "newsletter@stratechery.com",
+          "from_name": "Stratechery by Ben Thompson",
+          "to_emails": ["raphaeljafri@gmail.com"],
+          "cc_emails": [],
+          "subject": "Your Substack subscription this week",
+          "body_plain": "This week: Apple's services pivot, Google's AI restructure, and what it means for indie devs. Read the full piece on Stratechery.com.",
+          "internal_date": "2026-04-23T08:00:00Z",
+          "is_from_user": false
+        }
+      ]
+    },
+    {
+      "thread_id": "fix-thread-003",
+      "subject": "Mega Sale - 50% off everything",
+      "sender": "deals@example-retailer.com",
+      "disposition": "unclassified",
+      "messages": [
+        {
+          "message_id": "fix-msg-003a",
+          "from_email": "deals@example-retailer.com",
+          "from_name": "Example Retailer",
+          "to_emails": ["raphaeljafri@gmail.com"],
+          "cc_emails": [],
+          "subject": "Mega Sale - 50% off everything",
+          "body_plain": "Limited-time offer: 50% off site-wide. Shop now! Unsubscribe anytime.",
+          "internal_date": "2026-04-23T10:00:00Z",
+          "is_from_user": false
+        }
+      ]
+    }
+  ]
+}

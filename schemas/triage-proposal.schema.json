@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TriageProposal",
+  "description": "One sender's proposed disposition. Triage agent emits an array of these.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "sender_email",
+    "proposed_disposition",
+    "confidence",
+    "rationale",
+    "sample_subjects",
+    "thread_count"
+  ],
+  "properties": {
+    "sender_email": { "type": "string", "format": "email" },
+    "proposed_disposition": {
+      "enum": ["keep", "skip", "newsletter", "unclear"]
+    },
+    "confidence": { "enum": ["high", "medium", "low"] },
+    "rationale": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "sample_subjects": {
+      "type": "array",
+      "items": { "type": "string" },
+      "maxItems": 10
+    },
+    "thread_count": { "type": "integer", "minimum": 1 },
+    "cited_user_context_section": { "type": "string" }
+  }
+}

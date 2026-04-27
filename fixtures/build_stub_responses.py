@@ -1,0 +1,167 @@
+"""Build the sha-keyed stub-response file the gemini_runner expects.
+
+Renders the *exact* prompts each agent will issue against the fixture data,
+hashes them, and pairs each hash with a hand-authored canned output from
+`fixtures/stub_outputs.json`. The acceptance script runs this immediately
+before any agent call, so prompt edits don't need a separate fixture
+recompile — the hashes always match.
+
+Usage:
+  uv run python fixtures/build_stub_responses.py <output_path>
+
+Output: a JSON file at <output_path> in the format gemini_runner._stub_lookup
+expects: { "<sha256(model::full_for_hash)>": {output, input_tokens, ...}, ... }
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "agents"))
+
+from lib import prompts as pmod  # noqa: E402
+from lib import vertex_config  # noqa: E402
+
+FIXTURES_DIR = REPO / "fixtures"
+SEED_PATH = FIXTURES_DIR / "threads" / "seed.json"
+OUTPUTS_PATH = FIXTURES_DIR / "stub_outputs.json"
+
+
+def _hash(model: str, system_instruction: str, user_prompt: str) -> str:
+    full_for_hash = f"{system_instruction or ''}\n---\n{user_prompt}"
+    return hashlib.sha256(f"{model}::{full_for_hash}".encode()).hexdigest()
+
+
+def build_triage_entry(seed: dict, outputs: dict, model: str) -> dict:
+    # Mirror raw_reader's ORDER BY thread_count DESC, sender ASC. With one
+    # thread per sender in the fixture, the effective order is sender ASC.
+    sorted_threads = sorted(seed["threads"], key=lambda t: t["sender"])
+    senders = []
+    for t in sorted_threads:
+        senders.append(
+            {
+                "sender": t["sender"],
+                "thread_count": 1,
+                "sample_subjects": [t["subject"]],
+            }
+        )
+
+    user_prompt = (
+        "Classify the following unclassified senders. Return one TriageProposal "
+        "per sender, in input order.\n\n"
+        f"<senders>\n{json.dumps({'senders': senders}, indent=2)}\n</senders>"
+    )
+    system = pmod.compose_system_prompt(
+        "triage.md",
+        schemas={"TRIAGE_PROPOSAL_SCHEMA": "triage-proposal.schema.json"},
+    )
+    canned = outputs["triage:default"]
+    return {
+        _hash(model, system, user_prompt): {
+            "output": json.dumps(canned),
+            "input_tokens": 1200,
+            "output_tokens": 300,
+            "latency_ms": 50,
+        }
+    }
+
+
+def build_extract_entries(seed: dict, outputs: dict, model: str) -> dict:
+    out: dict = {}
+    system = pmod.compose_system_prompt(
+        "extract.md",
+        schemas={"THREAD_FACTS_SCHEMA": "thread-facts.schema.json"},
+    )
+    for t in seed["threads"]:
+        thread_payload = {
+            "thread_id": t["thread_id"],
+            "subject": t["subject"],
+            "messages": [
+                {
+                    "message_id": m["message_id"],
+                    "from": m["from_email"],
+                    "from_name": m.get("from_name"),
+                    "to": m["to_emails"],
+                    "cc": m["cc_emails"],
+                    "date": m["internal_date"],
+                    "is_from_user": m["is_from_user"],
+                    "body": m["body_plain"],
+                }
+                for m in t["messages"]
+            ],
+        }
+        user_prompt = (
+            "Extract facts from the following thread. Return one ThreadFacts JSON object.\n\n"
+            f"<thread>\n{json.dumps(thread_payload, indent=2)}\n</thread>"
+        )
+        canned = outputs[f"extract:{t['thread_id']}"]
+        out[_hash(model, system, user_prompt)] = {
+            "output": json.dumps(canned),
+            "input_tokens": 800,
+            "output_tokens": 250,
+            "latency_ms": 40,
+        }
+    return out
+
+
+def build_tagger_entries(seed: dict, outputs: dict, model: str) -> dict:
+    out: dict = {}
+    system = pmod.compose_system_prompt(
+        "tagger.md",
+        schemas={"TAG_SCHEMA": "tag.schema.json"},
+    )
+    for t in seed["threads"]:
+        for m in t["messages"]:
+            msg_payload = {
+                "message_id": m["message_id"],
+                "thread_id": t["thread_id"],
+                "thread_subject": t["subject"],
+                "from": m["from_email"],
+                "from_name": m.get("from_name"),
+                "to": m["to_emails"],
+                "cc": m["cc_emails"],
+                "date": m["internal_date"],
+                "is_from_user": m["is_from_user"],
+                "body": m["body_plain"],
+                "thread_disposition": t["disposition"],
+            }
+            user_prompt = (
+                "Tag the following message. Return one MessageTag JSON object.\n\n"
+                f"<message>\n{json.dumps(msg_payload, indent=2)}\n</message>"
+            )
+            canned = outputs[f"tagger:{m['message_id']}"]
+            out[_hash(model, system, user_prompt)] = {
+                "output": json.dumps(canned),
+                "input_tokens": 400,
+                "output_tokens": 80,
+                "latency_ms": 30,
+            }
+    return out
+
+
+def main() -> None:
+    if len(sys.argv) < 2:
+        print("usage: build_stub_responses.py <output_path>", file=sys.stderr)
+        sys.exit(2)
+    output_path = Path(sys.argv[1])
+
+    seed = json.loads(SEED_PATH.read_text())
+    outputs = json.loads(OUTPUTS_PATH.read_text())
+    model = vertex_config.GEMINI_FLASH
+
+    stub: dict = {}
+    stub.update(build_triage_entry(seed, outputs, model))
+    stub.update(build_extract_entries(seed, outputs, model))
+    stub.update(build_tagger_entries(seed, outputs, model))
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(stub, indent=2))
+    print(f"wrote {len(stub)} stub responses to {output_path}")
+
+
+if __name__ == "__main__":
+    main()

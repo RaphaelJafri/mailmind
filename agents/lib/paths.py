@@ -2,6 +2,9 @@
 
 Default lives under macOS Application Support. Override with MAILMIND_DATA_DIR
 for tests, demo mode, or non-default install locations.
+
+Env vars are read on every call so tests using `monkeypatch.setenv` work
+without re-importing this module.
 """
 
 from __future__ import annotations
@@ -10,39 +13,35 @@ import os
 from pathlib import Path
 
 
-def _default_data_dir() -> Path:
-    if env := os.environ.get("MAILMIND_DATA_DIR"):
-        return Path(env).expanduser().resolve()
-    return Path.home() / "Library" / "Application Support" / "mailmind"
-
-
-DATA_DIR = _default_data_dir()
-
-
 def data_dir() -> Path:
-    return DATA_DIR
+    if env := os.environ.get("MAILMIND_DATA_DIR"):
+        p = Path(env).expanduser().resolve()
+    else:
+        p = Path.home() / "Library" / "Application Support" / "mailmind"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def db_dir() -> Path:
-    p = DATA_DIR / "db"
+    p = data_dir() / "db"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
 def tokens_dir() -> Path:
-    p = DATA_DIR / "tokens"
+    p = data_dir() / "tokens"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
 def config_dir() -> Path:
-    p = DATA_DIR / "config"
+    p = data_dir() / "config"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
 def reports_dir() -> Path:
-    p = DATA_DIR / "reports"
+    p = data_dir() / "reports"
     p.mkdir(parents=True, exist_ok=True)
     return p
 

@@ -236,3 +236,164 @@ code {
   border-radius: 4px;
   font-size: 0.85em;
 }
+
+/* P1 additions */
+.section__subtitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  margin: 0.75rem 0 0.5rem;
+  text-transform: uppercase;
+}
+
+.button--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.table th {
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cell--mono {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
+.cell--muted {
+  color: var(--muted);
+}
+
+.cell--num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.cell--strong {
+  font-weight: 500;
+}
+
+.pill {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  margin-right: 0.25rem;
+}
+
+.pill--keep,
+.pill--urgent,
+.pill--followup,
+.pill--high {
+  border-color: var(--good);
+  color: var(--good);
+}
+.pill--newsletter,
+.pill--informational,
+.pill--medium,
+.pill--unclear {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.pill--skip,
+.pill--ignore,
+.pill--low {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.proposals {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.proposal {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.85rem;
+  background: var(--panel);
+}
+
+.proposal__head {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.proposal__rationale {
+  margin: 0.5rem 0 0.25rem;
+}
+
+.proposal__samples {
+  margin: 0.25rem 0 0.5rem 1.25rem;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.tag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+}
+
+.tag-grid__col {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+}
+
+.tag-grid__title {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.tag-grid__col ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.taglink {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.2rem 0;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.taglink:hover {
+  background: rgba(110, 118, 129, 0.12);
+}
+
+.taglink--active {
+  background: rgba(88, 166, 255, 0.15);
+}

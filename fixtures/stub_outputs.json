@@ -1,0 +1,125 @@
+{
+  "_doc": "Hand-authored canned outputs for fixture-mode runs. Keyed by a stable name; build_stub_responses.py hashes the actual rendered prompt at acceptance time and writes a sha-keyed stub file.",
+  "triage:default": {
+    "proposals": [
+      {
+        "sender_email": "morgan@northstar-talent.com",
+        "proposed_disposition": "keep",
+        "confidence": "high",
+        "rationale": "Personal recruiter intro thread with bidirectional reply — clearly a real conversation, not blast marketing.",
+        "sample_subjects": ["intro to Adam re: senior eng role"],
+        "thread_count": 1,
+        "cited_user_context_section": "Important contacts"
+      },
+      {
+        "sender_email": "newsletter@stratechery.com",
+        "proposed_disposition": "newsletter",
+        "confidence": "high",
+        "rationale": "Stratechery is a paid newsletter; informational digest, never a reply target.",
+        "sample_subjects": ["Your Substack subscription this week"],
+        "thread_count": 1,
+        "cited_user_context_section": "How I want mailmind to act"
+      },
+      {
+        "sender_email": "deals@example-retailer.com",
+        "proposed_disposition": "skip",
+        "confidence": "high",
+        "rationale": "Retail promotional sender with sale-themed subject and unsubscribe link — pure marketing.",
+        "sample_subjects": ["Mega Sale - 50% off everything"],
+        "thread_count": 1
+      }
+    ]
+  },
+  "extract:fix-thread-001": {
+    "thread_id": "fix-thread-001",
+    "participants": ["morgan@northstar-talent.com", "raphaeljafri@gmail.com"],
+    "summary": "Morgan from Northstar Talent is introducing Raphael to Adam Moore at Vector Labs for a senior engineering role. Raphael agreed and committed to sending an updated resume by Friday.",
+    "commitments_by_user": [
+      {
+        "description": "Send Morgan an updated resume by Friday.",
+        "due_date": null,
+        "source_message_ids": ["fix-msg-001b"]
+      }
+    ],
+    "commitments_by_others": [
+      {
+        "who": "morgan@northstar-talent.com",
+        "description": "Share Raphael's resume with Adam Moore at Vector Labs.",
+        "due_date": null,
+        "source_message_ids": ["fix-msg-001a"]
+      }
+    ],
+    "open_questions": [],
+    "last_message_from": "user",
+    "last_message_date": "2026-04-22T15:10:00Z",
+    "sentiment": "positive",
+    "topic_tags": ["recruiting", "intro"],
+    "confidence": "high"
+  },
+  "extract:fix-thread-002": {
+    "thread_id": "fix-thread-002",
+    "participants": ["newsletter@stratechery.com", "raphaeljafri@gmail.com"],
+    "summary": "Stratechery weekly newsletter digest. No conversation; informational only.",
+    "commitments_by_user": [],
+    "commitments_by_others": [],
+    "open_questions": [],
+    "last_message_from": "other",
+    "last_message_date": "2026-04-23T08:00:00Z",
+    "sentiment": "transactional",
+    "topic_tags": ["newsletter", "automated"],
+    "confidence": "high"
+  },
+  "extract:fix-thread-003": {
+    "thread_id": "fix-thread-003",
+    "participants": ["deals@example-retailer.com", "raphaeljafri@gmail.com"],
+    "summary": "Retail promotional email advertising a 50% off sale. No conversation.",
+    "commitments_by_user": [],
+    "commitments_by_others": [],
+    "open_questions": [],
+    "last_message_from": "other",
+    "last_message_date": "2026-04-23T10:00:00Z",
+    "sentiment": "transactional",
+    "topic_tags": ["automated", "marketing"],
+    "confidence": "high"
+  },
+  "tagger:fix-msg-001a": {
+    "message_id": "fix-msg-001a",
+    "tags": {
+      "urgency": "followup",
+      "category": "recruiting",
+      "project": ["jobsearch"]
+    },
+    "rationale": "Recruiter introducing user to a hiring manager; expects a reply within reply-latency for recruiting.",
+    "confidence": "high"
+  },
+  "tagger:fix-msg-001b": {
+    "message_id": "fix-msg-001b",
+    "tags": {
+      "urgency": "informational",
+      "category": "recruiting",
+      "project": ["jobsearch"]
+    },
+    "rationale": "User's own reply confirming the intro and committing to a resume by Friday.",
+    "confidence": "high"
+  },
+  "tagger:fix-msg-002a": {
+    "message_id": "fix-msg-002a",
+    "tags": {
+      "urgency": "informational",
+      "category": "newsletter",
+      "project": []
+    },
+    "rationale": "Substack newsletter digest with no actionable ask.",
+    "confidence": "high"
+  },
+  "tagger:fix-msg-003a": {
+    "message_id": "fix-msg-003a",
+    "tags": {
+      "urgency": "ignore",
+      "category": "newsletter",
+      "project": []
+    },
+    "rationale": "Pure retail marketing blast; thread is disposition=skip.",
+    "confidence": "high"
+  }
+}

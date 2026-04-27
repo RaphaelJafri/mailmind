@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ThreadFacts",
+  "description": "Extract agent output for a single thread. Ported from gmail-ops v1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "thread_id",
+    "participants",
+    "summary",
+    "commitments_by_user",
+    "commitments_by_others",
+    "open_questions",
+    "last_message_from",
+    "last_message_date",
+    "sentiment",
+    "topic_tags",
+    "confidence"
+  ],
+  "properties": {
+    "thread_id": { "type": "string", "minLength": 1 },
+    "participants": {
+      "type": "array",
+      "items": { "type": "string", "format": "email" },
+      "minItems": 1
+    },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 400 },
+    "commitments_by_user": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["description", "source_message_ids"],
+        "properties": {
+          "description": { "type": "string", "minLength": 1 },
+          "due_date": { "type": ["string", "null"] },
+          "source_message_ids": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "commitments_by_others": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["who", "description", "source_message_ids"],
+        "properties": {
+          "who": { "type": "string", "format": "email" },
+          "description": { "type": "string", "minLength": 1 },
+          "due_date": { "type": ["string", "null"] },
+          "source_message_ids": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question", "asked_by", "source_message_ids"],
+        "properties": {
+          "question": { "type": "string", "minLength": 1 },
+          "asked_by": { "enum": ["user", "other"] },
+          "source_message_ids": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "last_message_from": { "enum": ["user", "other"] },
+    "last_message_date": { "type": "string" },
+    "sentiment": {
+      "enum": ["positive", "neutral", "negative", "mixed", "transactional"]
+    },
+    "topic_tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "maxItems": 5
+    },
+    "confidence": { "enum": ["low", "med", "high"] }
+  }
+}
