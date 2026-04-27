@@ -470,6 +470,100 @@ export function setPermissions(opts: { gmail_compose?: boolean; gmail_send?: boo
   return postJson<PermissionsRow>(`${AGENTS_URL}/permissions`, opts);
 }
 
+// ----- Observability (P5a) -----
+
+export interface DailySummary {
+  day: string;
+  total_usd: number;
+  cap_usd: number;
+  soft_warn_usd: number;
+  hard_stop_usd: number;
+  pct_of_cap: number;
+  bucket: "ok" | "warn" | "stop";
+  per_agent: Array<{ agent_name: string; total_usd: number; runs: number }>;
+}
+
+export interface ErrorTaxonomy {
+  window_days: number;
+  total: number;
+  by_status: Record<string, number>;
+  schema_fail_rate: number;
+  retry_rate: number;
+}
+
+export interface LatencyByAgent {
+  agent_name: string;
+  p50_ms: number;
+  p95_ms: number;
+  runs: number;
+}
+
+export interface ObservabilitySummary {
+  today: DailySummary;
+  errors: ErrorTaxonomy;
+  latency_by_agent: LatencyByAgent[];
+}
+
+export interface CostTrajectory {
+  days: string[];
+  agents: string[];
+  series: Record<string, number[]>;
+  totals: number[];
+}
+
+export interface Anomaly {
+  id: string;
+  agent_name: string;
+  started_at: string;
+  latency_ms: number | null;
+  cost_usd: number | null;
+  result_status: string;
+  reasons: string[];
+}
+
+export interface BudgetConfig {
+  pricing_usd_per_million: Record<string, { input: number; output: number }>;
+  per_task_usd: Record<string, number>;
+  per_day_usd: { total: number; soft_warn_pct: number; hard_stop_pct: number };
+  anomalies: { latency_outlier_x_p95: number; cost_outlier_x_p95: number; rolling_window_days: number };
+}
+
+export interface LogEvent {
+  ts?: string;
+  level?: string;
+  event?: string;
+  agent_name?: string;
+  run_id?: string;
+  task_id?: string | null;
+  result_status?: string;
+  cost_usd?: number;
+  latency_ms?: number;
+  [k: string]: unknown;
+}
+
+export function getObservabilitySummary(signal?: AbortSignal) {
+  return getJson<ObservabilitySummary>(`${AGENTS_URL}/observability/summary`, signal);
+}
+
+export function getCostTrajectory(days = 7, signal?: AbortSignal) {
+  return getJson<CostTrajectory>(`${AGENTS_URL}/observability/cost_trajectory?days=${days}`, signal);
+}
+
+export function getAnomalies(limit = 50, signal?: AbortSignal) {
+  return getJson<{ anomalies: Anomaly[] }>(`${AGENTS_URL}/observability/anomalies?limit=${limit}`, signal);
+}
+
+export function getBudgetConfig(signal?: AbortSignal) {
+  return getJson<BudgetConfig>(`${AGENTS_URL}/observability/budget`, signal);
+}
+
+export function getLogTail(limit = 200, signal?: AbortSignal) {
+  return getJson<{ events: LogEvent[]; count_requested: number }>(
+    `${AGENTS_URL}/observability/log_tail?limit=${limit}`,
+    signal,
+  );
+}
+
 /**
  * Open an SSE-style fetch against /query and call onEvent for each line of
  * `data:` JSON. Returns an AbortController so the caller can cancel.

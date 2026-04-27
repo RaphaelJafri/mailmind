@@ -27,7 +27,7 @@ from typing import Any
 
 from google import genai
 
-from . import vertex_config
+from . import cost_guard, vertex_config
 
 
 @dataclass
@@ -38,6 +38,7 @@ class GeminiResult:
     latency_ms: int
     model: str
     stubbed: bool = False
+    cost_usd: float = 0.0
 
 
 @dataclass
@@ -49,6 +50,7 @@ class StructuredResult:
     latency_ms: int
     model: str
     stubbed: bool = False
+    cost_usd: float = 0.0
 
 
 def _client() -> genai.Client:
@@ -88,13 +90,16 @@ def health_check() -> GeminiResult:
     prompt = "Reply with exactly: PONG"
 
     if hit := _stub_lookup(model, prompt):
+        in_t = hit.get("input_tokens", 0)
+        out_t = hit.get("output_tokens", 0)
         return GeminiResult(
             text=hit["output"],
-            input_tokens=hit.get("input_tokens", 0),
-            output_tokens=hit.get("output_tokens", 0),
+            input_tokens=in_t,
+            output_tokens=out_t,
             latency_ms=hit.get("latency_ms", 0),
             model=model,
             stubbed=True,
+            cost_usd=cost_guard.actual_cost_usd(model, in_t, out_t),
         )
 
     client = _client()
@@ -109,13 +114,16 @@ def health_check() -> GeminiResult:
     )
     latency_ms = int((time.monotonic() - start) * 1000)
     usage = getattr(response, "usage_metadata", None)
+    in_t = getattr(usage, "prompt_token_count", 0) if usage else 0
+    out_t = getattr(usage, "candidates_token_count", 0) if usage else 0
     return GeminiResult(
         text=(response.text or "").strip(),
-        input_tokens=getattr(usage, "prompt_token_count", 0) if usage else 0,
-        output_tokens=getattr(usage, "candidates_token_count", 0) if usage else 0,
+        input_tokens=in_t,
+        output_tokens=out_t,
         latency_ms=latency_ms,
         model=model,
         stubbed=False,
+        cost_usd=cost_guard.actual_cost_usd(model, in_t, out_t),
     )
 
 
@@ -127,6 +135,7 @@ def generate_structured(
     max_output_tokens: int = 4096,
     temperature: float = 0.1,
     system_instruction: str | None = None,
+    agent_name: str | None = None,
 ) -> StructuredResult:
     """Generate JSON-mode output.
 
@@ -137,8 +146,27 @@ def generate_structured(
     Stub-mode lookup hashes only on `(model, prompt)` — system_instruction is
     folded into the prompt before hashing so callers can either include it
     inline or pass it separately.
+
+    `agent_name` opts the call into P5a's cost guards. When provided we
+    (a) refuse if today's cumulative spend has hit the per-day cap, and
+    (b) refuse if the pre-flight estimate exceeds the per-task cap. Both
+    raise `cost_guard.CostBudgetExceeded`. Stub-mode is enforced too, but
+    stub responses have zero tokens so the cap is effectively a no-op.
     """
     model = model or vertex_config.GEMINI_FLASH
+
+    if agent_name:
+        # Per-day first — the cheapest check.
+        cost_guard.check_per_day(agent_name)
+        # Pre-flight per-task estimate. The estimate is intentionally
+        # rough — chars/4 + max_output_tokens at full output rate.
+        estimate = cost_guard.estimate_request_cost_usd(
+            model=model,
+            prompt_chars=len(prompt or ""),
+            system_chars=len(system_instruction or ""),
+            max_output_tokens=max_output_tokens,
+        )
+        cost_guard.check_per_task(agent_name, estimate)
 
     # Stub mode: hash the full prompt (system + user) so test fixtures stay
     # deterministic regardless of how the call is structured.
@@ -147,14 +175,17 @@ def generate_structured(
     if hit := _stub_lookup(model, full_for_hash):
         raw = hit["output"]
         parsed = json.loads(raw) if isinstance(raw, str) else raw
+        in_t = hit.get("input_tokens", 0)
+        out_t = hit.get("output_tokens", 0)
         return StructuredResult(
             parsed=parsed,
             raw_text=raw if isinstance(raw, str) else json.dumps(raw),
-            input_tokens=hit.get("input_tokens", 0),
-            output_tokens=hit.get("output_tokens", 0),
+            input_tokens=in_t,
+            output_tokens=out_t,
             latency_ms=hit.get("latency_ms", 0),
             model=model,
             stubbed=True,
+            cost_usd=cost_guard.actual_cost_usd(model, in_t, out_t),
         )
 
     client = _client()
@@ -190,14 +221,17 @@ def generate_structured(
         ) from exc
 
     usage = getattr(response, "usage_metadata", None)
+    in_t = getattr(usage, "prompt_token_count", 0) if usage else 0
+    out_t = getattr(usage, "candidates_token_count", 0) if usage else 0
     return StructuredResult(
         parsed=parsed,
         raw_text=raw_text,
-        input_tokens=getattr(usage, "prompt_token_count", 0) if usage else 0,
-        output_tokens=getattr(usage, "candidates_token_count", 0) if usage else 0,
+        input_tokens=in_t,
+        output_tokens=out_t,
         latency_ms=latency_ms,
         model=model,
         stubbed=False,
+        cost_usd=cost_guard.actual_cost_usd(model, in_t, out_t),
     )
 
 

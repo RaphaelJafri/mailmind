@@ -45,6 +45,7 @@ def run(approval_id: str) -> dict:
     with agent_run.record(AGENT_NAME, model=vertex_config.GEMINI_FLASH) as run_row:
         result = approval.execute_send(approval_id, gmail_writer=gmail_writer.send)
         run_row.result_status = "success"
+        run_row.cost_usd = 0.0  # no LLM call; the seam itself is free.
         run_row.tools_called = [
             {"tool": "gmail.send", "approval_id": approval_id, "draft_id": result["draft_id"]}
         ]

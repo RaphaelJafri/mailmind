@@ -173,10 +173,12 @@ def run(contact_email: str, *, force: bool = False) -> dict:
             system_instruction=system_instruction,
             model=model,
             max_output_tokens=4096,
+            agent_name=AGENT_NAME,
         )
         run_row.input_tokens = result.input_tokens
         run_row.output_tokens = result.output_tokens
         run_row.latency_ms = result.latency_ms
+        run_row.cost_usd = result.cost_usd
         run_row.stubbed = result.stubbed
 
         rollup = result.parsed

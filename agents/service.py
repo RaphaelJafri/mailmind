@@ -49,9 +49,11 @@ import tagger_agent
 import triage_agent
 from lib import (
     approval as approval_lib,
+    cost_guard,
     db,
     gemini_runner,
     gmail_writer,
+    logging_setup,
     paths,
     query_tools,
     vertex_config,
@@ -69,6 +71,11 @@ STARTED_AT = datetime.now(timezone.utc).isoformat()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):  # noqa: ANN001
+    # P5a: structured logging is rotation-aware (BUILD §22). Initialising
+    # here rather than at module import keeps it scoped to a real service
+    # process — tests that import service.py for TestClient still work but
+    # don't spawn rotators in the test runner.
+    logging_setup.init_logging()
     yield
 
 
@@ -661,6 +668,72 @@ def _row_to_dict(r: Any) -> dict:
     if isinstance(d.get("stubbed"), int):
         d["stubbed"] = bool(d["stubbed"])
     return d
+
+
+# ----- /observability ------------------------------------------------------
+#
+# P5a: cost trajectory, latency P50/P95, anomalies, error taxonomy. The
+# Observability tab in the webview consumes these.
+
+@app.get("/observability/summary")
+def observability_summary() -> dict:
+    """Headline numbers for the Observability hero card.
+
+    Returns today's cost vs cap (with bucket: ok | warn | stop), 7-day
+    schema-fail / retry rate, and per-agent latency P50/P95.
+    """
+    return {
+        "today": cost_guard.daily_summary(),
+        "errors": cost_guard.error_taxonomy(),
+        "latency_by_agent": cost_guard.latency_distribution(),
+    }
+
+
+@app.get("/observability/cost_trajectory")
+def observability_cost_trajectory(days: int = 7) -> dict:
+    """Per-day, per-agent USD spend over the trailing window. The UI
+    renders this as a stacked-area chart."""
+    if days < 1 or days > 30:
+        raise HTTPException(status_code=400, detail="days must be in [1, 30]")
+    return cost_guard.cost_trajectory(days=days)
+
+
+@app.get("/observability/anomalies")
+def observability_anomalies(limit: int = 50) -> dict:
+    """Runs whose latency or cost stand out vs their agent's rolling P95.
+
+    Multipliers + window come from `config/pipeline.yml`. Used by the
+    Anomalies panel on the Observability tab.
+    """
+    return {"anomalies": cost_guard.anomalies(limit=limit)}
+
+
+@app.get("/observability/log_tail")
+def observability_log_tail(limit: int = 200) -> dict:
+    """Last `limit` JSON-line events from agent-service.log.
+
+    Surfaced in the dashboard's "Recent events" feed. Cheap (reads only
+    the trailing 64KB of the file) so the UI can poll if needed.
+    """
+    if limit < 1 or limit > 1000:
+        raise HTTPException(status_code=400, detail="limit must be in [1, 1000]")
+    return {"events": logging_setup.tail_lines(limit=limit), "count_requested": limit}
+
+
+@app.get("/observability/budget")
+def observability_budget() -> dict:
+    """Just the budget block from `config/pipeline.yml`.
+
+    The webview reads this so the user can see *why* their per-day cap is
+    what it is — useful when reviewing the Settings tab during a JD demo.
+    """
+    caps = cost_guard._load_caps()  # noqa: SLF001 — internal but stable shape
+    return {
+        "pricing_usd_per_million": caps.pricing,
+        "per_task_usd": caps.per_task_usd,
+        "per_day_usd": caps.per_day_usd,
+        "anomalies": caps.anomalies,
+    }
 
 
 # ----- main ----------------------------------------------------------------

@@ -81,10 +81,12 @@ def run(*, min_thread_count: int = DEFAULT_MIN_THREAD_COUNT, limit: int = DEFAUL
             model=model,
             max_output_tokens=4096,
             temperature=0.1,
+            agent_name=AGENT_NAME,
         )
         run_row.input_tokens = result.input_tokens
         run_row.output_tokens = result.output_tokens
         run_row.latency_ms = result.latency_ms
+        run_row.cost_usd = result.cost_usd
         run_row.stubbed = result.stubbed
 
         proposals = result.parsed.get("proposals", [])

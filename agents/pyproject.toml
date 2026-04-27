@@ -13,6 +13,7 @@ dependencies = [
     "structlog>=24.4.0",
     "jsonschema>=4.23.0",
     "ulid-py>=1.1.0",
+    "PyYAML>=6.0.2",
 ]
 
 [project.optional-dependencies]

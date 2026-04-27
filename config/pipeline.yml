@@ -1,0 +1,52 @@
+# mailmind pipeline configuration — cost guardrails + model selection.
+#
+# Per BUILD §20. Edit this file to retune caps; agents read it on every
+# invocation so changes take effect on the next call. Tests can override
+# with MAILMIND_PIPELINE_CONFIG=<path> or disable enforcement with
+# MAILMIND_DISABLE_COST_GUARD=1.
+
+# Pin model IDs in one place so a version bump is a single edit.
+gemini_models:
+  flash: gemini-2.5-flash
+  pro: gemini-2.5-pro
+
+# USD per million tokens, per Vertex AI list price (us-central1, 2026 Q2).
+# Update when Google moves prices; the cost_guard module reads these on
+# every call to compute actual cost.
+gemini_pricing_usd_per_million:
+  gemini-2.5-flash:
+    input: 0.30
+    output: 2.50
+  gemini-2.5-pro:
+    input: 1.25
+    output: 10.00
+
+# Per-task USD caps. Refuse + escalate before invoking Gemini if the
+# pre-flight estimate (input chars / 4 + max_output_tokens at full output
+# rate) would exceed the cap. Tuned generous so legitimate work never
+# trips; the point is to catch a runaway loop, not annoy users.
+cost_caps:
+  per_task_usd:
+    triage: 0.05
+    extract: 0.02
+    tagger: 0.005
+    relationship: 0.05
+    cadence: 0.00          # deterministic; never calls Gemini
+    reconcile: 0.00        # deterministic; never calls Gemini
+    query: 0.10
+    draft: 0.20
+    eval_judge: 0.02       # P5b LLM-as-judge
+    review_agent: 0.02     # P5b sample-for-review
+    send_agent: 0.00       # no LLM call; just send seam
+  per_day_usd:
+    total: 5.00
+    soft_warn_pct: 70
+    hard_stop_pct: 100
+
+# Anomaly thresholds for the Observability tab. A run is flagged if its
+# latency exceeds latency_outlier_x_p95 * the rolling-7-day P95 for the
+# same agent, or its cost exceeds cost_outlier_x_p95 * P95.
+anomalies:
+  latency_outlier_x_p95: 3.0
+  cost_outlier_x_p95: 2.0
+  rolling_window_days: 7

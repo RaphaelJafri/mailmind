@@ -907,3 +907,133 @@ code {
   background: #fee2e2;
   border-color: #dc2626;
 }
+
+/* ----- P5a: Observability tab ------------------------------------------- */
+
+.observability__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.obs-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.obs-card__label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.obs-card__value {
+  font-size: 1.6rem;
+  font-weight: 600;
+  font-family: var(--mono);
+}
+
+.obs-card__sub {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.obs-card__bar {
+  margin-top: 0.4rem;
+  height: 6px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.obs-card__bar-fill {
+  height: 100%;
+  background: var(--good);
+  transition: width 0.3s ease;
+}
+
+.obs-card--warn .obs-card__bar-fill,
+.obs-card__bar-fill--warn { background: var(--warn); }
+.obs-card--stop .obs-card__bar-fill,
+.obs-card__bar-fill--stop { background: var(--bad); }
+
+.obs-card--warn { border-color: var(--warn); }
+.obs-card--stop { border-color: var(--bad); }
+
+.obs-chart {
+  width: 100%;
+  max-width: 720px;
+  height: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem;
+}
+
+.obs-chart__bar {
+  fill: var(--accent);
+  opacity: 0.85;
+}
+
+.obs-chart__axis {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.obs-chart__tick {
+  fill: var(--muted);
+  font-size: 8px;
+  font-family: var(--mono);
+}
+
+.obs-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.obs-chart__legend-item code {
+  margin-right: 0.25rem;
+  color: var(--text);
+}
+
+.obs-budget {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.obs-budget__row {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.obs-budget__label {
+  color: var(--muted);
+  min-width: 12rem;
+}
+
+.obs-budget__value {
+  font-family: var(--mono);
+}
+
+.pill--running { background: #fef3c7; color: #92400e; }
+.pill--schema_fail,
+.pill--schema_partial_fail { background: #fef2f2; color: #991b1b; }
+.pill--truncated { background: #fef3c7; color: #92400e; }
+.pill--per_task_cap_exceeded,
+.pill--per_day_cap_exceeded { background: #fee2e2; color: #b91c1c; }
+.pill--success { background: #d1fae5; color: #065f46; }
+.pill--error { background: #fee2e2; color: #991b1b; }
+.pill--agent_run_start,
+.pill--agent_run_finish { background: #ede9fe; color: #5b21b6; }

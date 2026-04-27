@@ -8,6 +8,7 @@ import Contacts from "./tabs/Contacts";
 import Ask from "./tabs/Ask";
 import Drafts from "./tabs/Drafts";
 import Sent from "./tabs/Sent";
+import Observability from "./tabs/Observability";
 
 const TABS = [
   { id: "setup", label: "Settings", component: Setup },
@@ -19,6 +20,7 @@ const TABS = [
   { id: "ask", label: "Ask", component: Ask },
   { id: "drafts", label: "Drafts", component: Drafts },
   { id: "sent", label: "Sent", component: Sent },
+  { id: "observability", label: "Observability", component: Observability },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -30,7 +32,7 @@ export default function App() {
     <div className="app">
       <header className="app__header">
         <span className="app__title">mailmind</span>
-        <span className="app__pill">P4 · drafts + sends with approval gate</span>
+        <span className="app__pill">P5a · observability + cost guards</span>
         <nav className="tabs">
           {TABS.map((t) => (
             <button

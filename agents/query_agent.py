@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterator
 
-from lib import agent_run, gemini_runner, prompts, query_tools, vertex_config
+from lib import agent_run, cost_guard, gemini_runner, prompts, query_tools, vertex_config
 
 
 AGENT_NAME = "query_agent"
@@ -35,14 +35,11 @@ MAX_TOOL_CALLS = 8
 MAX_WALL_SECONDS = 30.0
 MAX_COST_USD = 0.10
 
-# Gemini Flash 2.5 list price (us-central1, 2026): $0.075 / 1M input, $0.30 / 1M output.
-# Pinned here so the cost cap is deterministic in tests; revisit when prices change.
-COST_PER_INPUT_TOKEN = 0.075 / 1_000_000
-COST_PER_OUTPUT_TOKEN = 0.30 / 1_000_000
 
-
-def estimate_cost_usd(input_tokens: int, output_tokens: int) -> float:
-    return input_tokens * COST_PER_INPUT_TOKEN + output_tokens * COST_PER_OUTPUT_TOKEN
+def estimate_cost_usd(input_tokens: int, output_tokens: int, *, model: str | None = None) -> float:
+    """Wraps cost_guard.actual_cost_usd so callers don't need to know the
+    model — defaults to Flash, which is what the query loop uses today."""
+    return cost_guard.actual_cost_usd(model or vertex_config.GEMINI_FLASH, input_tokens, output_tokens)
 
 
 # ---- streaming event shape ------------------------------------------------
@@ -168,7 +165,12 @@ def run(
                     model=model,
                     max_output_tokens=1024,
                     temperature=0.2,
+                    agent_name=AGENT_NAME,
                 )
+            except cost_guard.CostBudgetExceeded as exc:
+                yield QueryEvent("error", {"error": f"{exc.code}: {exc}", "code": exc.code})
+                truncation_reason = exc.code
+                break
             except Exception as exc:  # noqa: BLE001
                 yield QueryEvent("error", {"error": f"{type(exc).__name__}: {exc}"})
                 truncation_reason = "model_error"

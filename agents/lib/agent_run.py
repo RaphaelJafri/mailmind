@@ -16,7 +16,7 @@ from typing import Any, Iterator
 
 import ulid
 
-from . import db
+from . import db, logging_setup
 
 
 @dataclass
@@ -113,6 +113,13 @@ def record(
         agent_name, model, task_id=task_id, parent_run_id=parent_run_id
     )
     _persist(run)  # row exists immediately so concurrent readers see "running"
+    logging_setup.emit_run_event(
+        event="agent_run_start",
+        agent_name=run.agent_name,
+        run_id=run.id,
+        task_id=run.task_id,
+        extra={"model": run.model, "started_at": run.started_at, "parent_run_id": run.parent_run_id},
+    )
     started = time.monotonic()
     try:
         yield run
@@ -127,3 +134,21 @@ def record(
         if run.latency_ms is None:
             run.latency_ms = int((time.monotonic() - started) * 1000)
         _persist(run)
+        logging_setup.emit_run_event(
+            event="agent_run_finish",
+            agent_name=run.agent_name,
+            run_id=run.id,
+            task_id=run.task_id,
+            extra={
+                "model": run.model,
+                "finished_at": run.finished_at,
+                "result_status": run.result_status,
+                "input_tokens": run.input_tokens,
+                "output_tokens": run.output_tokens,
+                "cost_usd": run.cost_usd,
+                "latency_ms": run.latency_ms,
+                "stubbed": run.stubbed,
+                "tools_called": [t.get("tool") for t in run.tools_called] or None,
+                "error_message": run.error_message,
+            },
+        )

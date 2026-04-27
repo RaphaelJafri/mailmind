@@ -166,10 +166,12 @@ def run(thread_id: str, intent: str, *, model: str | None = None) -> dict:
             model=model,
             max_output_tokens=2048,
             temperature=0.3,
+            agent_name=AGENT_NAME,
         )
         run_row.input_tokens = result.input_tokens
         run_row.output_tokens = result.output_tokens
         run_row.latency_ms = result.latency_ms
+        run_row.cost_usd = result.cost_usd
         run_row.stubbed = result.stubbed
 
         draft = result.parsed
