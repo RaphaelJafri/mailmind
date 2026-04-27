@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# mailmind launcher — runs from the .app bundle when the user double-clicks
+# the icon in Finder/Dock/Spotlight. Spawns the three sidecars (ingester,
+# agents, vite), opens the dashboard in the default browser, and stays
+# alive until the user quits the app from the Dock.
+#
+# Locations:
+#   Logs:   ~/Library/Logs/mailmind/launcher.log
+#   Data:   ~/Library/Application Support/mailmind
+#   Repo:   resolved from the .app's parent directory
+
+set -uo pipefail
+
+# Resolve the repo root from the .app's location:
+#   <repo>/mailmind.app/Contents/MacOS/mailmind   (this script)
+SELF="${BASH_SOURCE[0]}"
+APP_BUNDLE="$(cd "$(dirname "$SELF")/../.." && pwd)"  # .../mailmind.app
+ROOT="$(cd "$APP_BUNDLE/.." && pwd)"                  # repo root
+cd "$ROOT"
+
+# Logs go to the standard macOS location so users / Console.app can find them.
+LOG_DIR="${MAILMIND_LOGS_DIR:-$HOME/Library/Logs/mailmind}"
+mkdir -p "$LOG_DIR"
+LAUNCHER_LOG="$LOG_DIR/launcher.log"
+exec >>"$LAUNCHER_LOG" 2>&1
+echo
+echo "============================================================"
+echo "[$(date '+%Y-%m-%dT%H:%M:%S')] launcher start"
+echo "  bundle: $APP_BUNDLE"
+echo "  repo:   $ROOT"
+echo "============================================================"
+
+# Finder launches with a minimal PATH — augment with the common dev paths
+# so node/npm/uv/python/git resolve. We also try sourcing the user's shell
+# rc files because a lot of dev tools install themselves there.
+export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.nvm/versions/node/v22.19.0/bin:$PATH"
+[[ -f "$HOME/.zprofile" ]] && source "$HOME/.zprofile" 2>/dev/null || true
+[[ -f "$HOME/.zshrc" ]] && source "$HOME/.zshrc" 2>/dev/null || true
+
+# Sanity check the toolchain. Surface a clear error if anything's missing
+# rather than failing deep inside dev.sh.
+missing=()
+for cmd in node npm uv python3; do
+  command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
+done
+if [[ ${#missing[@]} -gt 0 ]]; then
+  msg="mailmind needs ${missing[*]} on your PATH. Install with Homebrew (brew install ${missing[*]/python3/python@3.12}), then re-launch."
+  echo "[error] $msg"
+  osascript -e "display dialog \"$msg\" with title \"mailmind launcher\" buttons {\"OK\"} default button 1 with icon stop" 2>/dev/null || true
+  exit 1
+fi
+
+if [[ ! -x "$ROOT/scripts/dev.sh" ]]; then
+  msg="scripts/dev.sh not found at $ROOT. Make sure the .app is inside the mailmind repo directory."
+  echo "[error] $msg"
+  osascript -e "display dialog \"$msg\" with title \"mailmind launcher\" buttons {\"OK\"} default button 1 with icon stop" 2>/dev/null || true
+  exit 1
+fi
+
+# Already running? If the dashboard responds on :5173, just open it.
+# This makes double-clicking the .app a second time a no-op success
+# rather than a port-collision failure.
+if curl -sf "http://127.0.0.1:5173/" >/dev/null 2>&1; then
+  echo "[info] dashboard already up on :5173 — opening browser"
+  osascript -e 'display notification "Already running — opening dashboard." with title "mailmind"' 2>/dev/null || true
+  open "http://127.0.0.1:5173" 2>/dev/null || true
+  exit 0
+fi
+
+# Hand off to the existing launcher. It already manages port cleanup,
+# health-checks, and trap-on-exit. We set OPEN_BROWSER so it pops the
+# dashboard tab; we set MAILMIND_LOGS_DIR so the logs land in our spot.
+export MAILMIND_LOGS_DIR="$LOG_DIR"
+
+# Friendly notification so the user knows the app is starting (services
+# can take 5–20s on first launch while npm/uv install).
+osascript -e 'display notification "Starting up — opening dashboard when ready…" with title "mailmind"' 2>/dev/null || true
+
+# Run dev.sh in the foreground so the .app stays alive. dev.sh's trap
+# handler cleans up children when this script gets SIGTERM (which the Dock
+# sends on Quit).
+exec "$ROOT/scripts/dev.sh"

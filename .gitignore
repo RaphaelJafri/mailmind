@@ -20,8 +20,13 @@ uv.lock
 # Rust / Tauri
 shell/target/
 shell/Cargo.lock
-*.app
+# Ignore .app bundles produced by Tauri builds, but allow our hand-written
+# launcher bundle at the repo root (mailmind.app — the double-clickable
+# entry point for non-terminal use).
+shell/**/*.app
 *.dmg
+!/mailmind.app
+!/mailmind.app/**
 
 # Tauri build artifacts
 src-tauri/target/

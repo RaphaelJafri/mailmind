@@ -8,6 +8,14 @@ The architectural rebuild ("v2") of [gmail-ops](https://github.com/raphaeljafri/
 
 Under active build. See [WORKPLAN-V2-EXECUTION.md](WORKPLAN-V2-EXECUTION.md) for the phase-by-phase plan and current state.
 
+## Launching
+
+Double-click **`mailmind.app`** at the repo root. It boots the three sidecars (Node ingester, Python agents, Vite webview) and opens the dashboard in your default browser. Quit from the Dock to stop everything.
+
+First time: the dashboard opens to **Settings → Gmail connection**, which walks you through pasting Google Cloud OAuth credentials (a 5-minute one-time browser thing on Google's side; nothing else from the terminal). After that, every launch is one double-click.
+
+If you'd rather run from a terminal: `scripts/dev.sh` is the same launcher.
+
 ## Docs
 
 - [WORKPLAN-V2.md](WORKPLAN-V2.md) — vision + phases (P0–P6).

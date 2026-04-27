@@ -184,103 +184,158 @@ function NeedsConfigPanel({
   setError: (e: string | null) => void;
   refresh: () => Promise<void>;
 }) {
-  const [showGuide, setShowGuide] = useState(true);
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
+  const [phase, setPhase] = useState<"idle" | "saving" | "waiting_oauth">("idle");
+  const [pollMsg, setPollMsg] = useState<string>("");
+  const [authUrl, setAuthUrl] = useState<string | null>(null);
+  const cancelRef = useRef<{ aborted: boolean }>({ aborted: false });
 
-  const onSave = async () => {
+  const handleApiError = (err: unknown) => {
+    const msg = (err as Error).message || String(err);
+    const m = msg.match(/→ (\d+):\s*(.*)/);
+    if (m) {
+      try {
+        const body = JSON.parse(m[2]);
+        setError(body.message || body.error || msg);
+        return;
+      } catch {
+        /* fall through */
+      }
+    }
+    setError(msg);
+  };
+
+  const onSaveAndConnect = async () => {
     if (!clientId.trim() || !clientSecret.trim()) {
       setError("Both Client ID and Client Secret are required.");
       return;
     }
     setBusy(true);
     setError(null);
+    setPollMsg("");
+    cancelRef.current = { aborted: false };
     try {
+      // 1. Save credentials.
+      setPhase("saving");
       await saveOAuthConfig({
         client_id: clientId.trim(),
         client_secret: clientSecret.trim(),
       });
-      setClientId("");
-      setClientSecret("");
-      await refresh();
-    } catch (err) {
-      const msg = (err as Error).message || String(err);
-      const m = msg.match(/→ (\d+):\s*(.*)/);
-      if (m) {
-        try {
-          const body = JSON.parse(m[2]);
-          setError(body.message || body.error || msg);
-        } catch {
-          setError(msg);
+
+      // 2. Immediately kick off OAuth — no extra click required.
+      setPhase("waiting_oauth");
+      const flow = await startAuth();
+      setAuthUrl(flow.auth_url);
+      const popup = window.open(flow.auth_url, "_blank", "noopener,noreferrer");
+      setPollMsg(
+        popup
+          ? "Waiting for you to allow access in the new tab…"
+          : "Popup blocked — click the link below to open Google authorization.",
+      );
+
+      // 3. Poll until done.
+      const deadline = Date.now() + flow.expires_in_s * 1000;
+      while (Date.now() < deadline && !cancelRef.current.aborted) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const p = await pollAuth(flow.state_token);
+        if (p.status === "authorized") {
+          setPollMsg("Authorized — refreshing…");
+          setClientId("");
+          setClientSecret("");
+          setAuthUrl(null);
+          await refresh();
+          return;
         }
-      } else {
-        setError(msg);
+        if (p.status === "error") {
+          setError(`OAuth failed: ${p.error ?? "unknown"}`);
+          setAuthUrl(null);
+          return;
+        }
       }
+      if (!cancelRef.current.aborted) {
+        setError("Authorization timed out. Try again.");
+        try { await cancelAuth(flow.state_token); } catch {}
+        setAuthUrl(null);
+      }
+    } catch (err) {
+      handleApiError(err);
     } finally {
       setBusy(false);
+      setPhase("idle");
     }
+  };
+
+  const onCancel = async () => {
+    cancelRef.current = { aborted: true };
+    setBusy(false);
+    setPhase("idle");
+    setAuthUrl(null);
+    setPollMsg("");
   };
 
   return (
     <div className="auth-panel">
+      <p className="auth-panel__intro">
+        <strong>Welcome.</strong> mailmind needs access to your Gmail. The setup
+        is one-time and takes <strong>about 5 minutes</strong>. Step 1 happens
+        in Google Cloud Console (a one-time browser thing — Google requires
+        it). Step 2 is pasting two values back here. Then everything runs
+        from this dashboard forever.
+      </p>
+
       <div className="auth-panel__step">
         <div className="auth-panel__step-num">1</div>
         <div className="auth-panel__step-body">
-          <strong>Create an OAuth client in Google Cloud Console.</strong>
-          <button
-            className="button button--ghost auth-panel__guide-toggle"
-            onClick={() => setShowGuide((v) => !v)}
+          <h3 className="auth-panel__step-title">
+            Get your OAuth client from Google Cloud
+          </h3>
+          <a
+            className="button button--accent auth-panel__big-button"
+            href="https://console.cloud.google.com/apis/credentials"
+            target="_blank"
+            rel="noreferrer"
           >
-            {showGuide ? "hide steps" : "show steps"}
-          </button>
-          {showGuide && (
-            <ol className="auth-panel__guide">
-              <li>
-                Open{" "}
-                <a
-                  href="https://console.cloud.google.com/apis/credentials"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  console.cloud.google.com/apis/credentials
-                </a>
-                . Create a new project (or pick an existing one) — this is just
-                a container for the OAuth client; nothing is billed.
-              </li>
-              <li>
-                Configure the OAuth consent screen:{" "}
-                <em>External</em> user type, app name <code>mailmind</code>, your
-                email as developer contact. Add your Gmail address to{" "}
-                <strong>Test users</strong> so you can authorize without
-                publishing the app.
-              </li>
-              <li>
-                Add the scope{" "}
-                <code>https://www.googleapis.com/auth/gmail.readonly</code>{" "}
-                under <em>Scopes</em>. (You can add{" "}
-                <code>gmail.compose</code> and <code>gmail.send</code> later
-                from <em>Settings → Permissions</em> below if you want the
-                draft / send features.)
-              </li>
-              <li>
-                Click <em>Credentials → Create Credentials → OAuth client ID</em>
-                . Pick application type <strong>Desktop app</strong> (the
-                redirect we use is loopback). Name it <code>mailmind</code>.
-              </li>
-              <li>
-                Copy the <strong>Client ID</strong> and{" "}
-                <strong>Client Secret</strong> from the dialog and paste them
-                below.
-              </li>
-            </ol>
-          )}
+            Open Google Cloud Console →
+          </a>
+          <p className="hint" style={{ marginTop: "0.5rem" }}>
+            In the new tab, do the following (one time, ever):
+          </p>
+          <ol className="auth-panel__guide">
+            <li>
+              <strong>Create a project.</strong> If this is your first time, you'll
+              be asked to. Name it anything ("mailmind" works). Nothing gets
+              billed — this is just a container for the OAuth client.
+            </li>
+            <li>
+              <strong>Configure the OAuth consent screen.</strong> Pick{" "}
+              <em>External</em> user type, set the app name to{" "}
+              <code>mailmind</code>, and use your own email as the developer
+              contact. On the <em>Scopes</em> page add{" "}
+              <code>.../auth/gmail.readonly</code>. On <em>Test users</em>, add
+              your own Gmail address (so you can authorize without publishing
+              the app to the world).
+            </li>
+            <li>
+              <strong>Create the OAuth client.</strong> Back at{" "}
+              <em>Credentials → Create Credentials → OAuth client ID</em>, pick
+              application type <strong>Desktop app</strong>, name it{" "}
+              <code>mailmind</code>, and click <em>Create</em>.
+            </li>
+            <li>
+              A dialog pops up with <strong>Client ID</strong> and{" "}
+              <strong>Client Secret</strong>. Leave it open and{" "}
+              <strong>copy those two strings</strong> — you'll paste them in
+              Step 2.
+            </li>
+          </ol>
         </div>
       </div>
 
       <div className="auth-panel__step">
         <div className="auth-panel__step-num">2</div>
         <div className="auth-panel__step-body auth-panel__step-body--form">
-          <strong>Paste your credentials.</strong>
+          <h3 className="auth-panel__step-title">Paste them here, then connect</h3>
           <p className="hint">
             Stored locally at{" "}
             <code>~/Library/Application Support/mailmind/config/oauth_client.json</code>{" "}
@@ -296,6 +351,7 @@ function NeedsConfigPanel({
               placeholder="123456789-abc.apps.googleusercontent.com"
               autoComplete="off"
               spellCheck={false}
+              disabled={busy}
             />
           </div>
           <div className="form-row">
@@ -308,17 +364,38 @@ function NeedsConfigPanel({
               placeholder="GOCSPX-…"
               autoComplete="off"
               spellCheck={false}
+              disabled={busy}
             />
           </div>
-          <div className="actions">
-            <button
-              className="button button--accent"
-              onClick={onSave}
-              disabled={busy || !clientId.trim() || !clientSecret.trim()}
-            >
-              {busy ? "saving…" : "Save & continue"}
-            </button>
-          </div>
+          {phase === "waiting_oauth" && (
+            <div className="auth-panel__waiting">
+              <span className="auth-panel__poll-msg">{pollMsg}</span>
+              {authUrl && (
+                <a
+                  className="button"
+                  href={authUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open Google authorization
+                </a>
+              )}
+              <button className="button button--ghost" onClick={onCancel}>
+                cancel
+              </button>
+            </div>
+          )}
+          {phase !== "waiting_oauth" && (
+            <div className="actions">
+              <button
+                className="button button--accent auth-panel__big-button"
+                onClick={onSaveAndConnect}
+                disabled={busy || !clientId.trim() || !clientSecret.trim()}
+              >
+                {phase === "saving" ? "saving…" : "Connect Gmail →"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
