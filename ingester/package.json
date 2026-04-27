@@ -1,0 +1,21 @@
+{
+  "name": "mailmind-ingester",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic Gmail ingestion + classification sidecar for mailmind. Talks to Tauri shell over localhost HTTP.",
+  "scripts": {
+    "start": "node src/index.mjs",
+    "auth": "node src/auth.mjs",
+    "sync": "node src/sync.mjs",
+    "test": "node --test tests/*.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "googleapis": "^144.0.0",
+    "uuid": "^10.0.0",
+    "yaml": "^2.5.1"
+  }
+}
