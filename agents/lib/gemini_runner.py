@@ -80,10 +80,13 @@ def health_check() -> GeminiResult:
 
     client = _client()
     start = time.monotonic()
+    # Gemini 2.5 flash is a reasoning model — internal thinking consumes
+    # output tokens before the visible response. 256 leaves room for both.
+    # Real agents will tune per-task; this is the health check only.
     response = client.models.generate_content(
         model=model,
         contents=prompt,
-        config={"max_output_tokens": 16, "temperature": 0.0},
+        config={"max_output_tokens": 256, "temperature": 0.0},
     )
     latency_ms = int((time.monotonic() - start) * 1000)
     usage = getattr(response, "usage_metadata", None)

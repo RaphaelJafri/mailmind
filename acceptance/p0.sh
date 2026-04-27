@@ -23,12 +23,26 @@ WEBVIEW_PORT="${WEBVIEW_PORT:-5183}"
 
 cleanup() {
   local code=$?
-  if [[ -n "${INGESTER_PID:-}" ]]; then kill "$INGESTER_PID" 2>/dev/null || true; fi
-  if [[ -n "${AGENTS_PID:-}" ]];   then kill "$AGENTS_PID"   2>/dev/null || true; fi
-  if [[ -n "${VITE_PID:-}" ]];     then kill "$VITE_PID"     2>/dev/null || true; fi
+  for pid in "${INGESTER_PID:-}" "${AGENTS_PID:-}" "${VITE_PID:-}"; do
+    [[ -n "$pid" ]] || continue
+    # Kill the whole process group; uvicorn forks workers that survive a
+    # parent-only SIGTERM and then linger on the port across runs.
+    kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+  done
+  sleep 0.5
+  for pid in "${INGESTER_PID:-}" "${AGENTS_PID:-}" "${VITE_PID:-}"; do
+    [[ -n "$pid" ]] || continue
+    kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+  done
+  # Belt-and-suspenders: kill anything still listening on our test ports.
+  for port in "$INGESTER_PORT" "$AGENTS_PORT" "$WEBVIEW_PORT"; do
+    local pids
+    pids=$(lsof -ti tcp:"$port" 2>/dev/null || true)
+    [[ -n "$pids" ]] && kill -KILL $pids 2>/dev/null || true
+  done
   exit "$code"
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 
 step() { printf "\n\033[1;34m== %s ==\033[0m\n" "$*"; }
 ok()   { printf "\033[1;32m✓\033[0m %s\n" "$*"; }
