@@ -5,6 +5,11 @@ import {
   type AgentsHealth,
   type IngesterHealth,
 } from "../api/health";
+import {
+  getPermissions,
+  setPermissions,
+  type PermissionsRow,
+} from "../api/mailmind";
 
 type Loadable<T> =
   | { state: "idle" }
@@ -70,7 +75,93 @@ export default function Setup() {
           Re-check
         </button>
       </div>
+
+      <PermissionsSection />
     </>
+  );
+}
+
+function PermissionsSection() {
+  const [perms, setPerms] = useState<Loadable<PermissionsRow>>({ state: "idle" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setPerms({ state: "loading" });
+    try {
+      const p = await getPermissions();
+      setPerms({ state: "ok", data: p });
+    } catch (err) {
+      setPerms({ state: "err", error: (err as Error).message });
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  async function flipCompose(value: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await setPermissions({ gmail_compose: value });
+      setPerms({ state: "ok", data: updated });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const composeOn = perms.state === "ok" && perms.data["gmail.compose"];
+  const sendOn = perms.state === "ok" && perms.data["gmail.send"];
+
+  return (
+    <section className="section">
+      <h2 className="section__title">Permissions</h2>
+      <p className="hint">
+        OAuth scopes mailmind has been granted. Drafts can only land in Gmail
+        once you grant <code>gmail.compose</code>; sending is gated behind a
+        separate, opt-in <code>gmail.send</code> grant (P4b — disabled in this
+        build).
+      </p>
+      <div className="card">
+        <div className="row">
+          <span className="row__label">gmail.compose</span>
+          <span className="row__value">
+            <span className={composeOn ? "status status--ok" : "status status--unknown"}>
+              {composeOn ? "granted" : "not granted"}
+            </span>
+            <button
+              className="button"
+              style={{ marginLeft: 12 }}
+              disabled={busy}
+              onClick={() => flipCompose(!composeOn)}
+            >
+              {composeOn ? "Revoke" : "Grant gmail.compose"}
+            </button>
+          </span>
+        </div>
+        <div className="row">
+          <span className="row__label">gmail.send</span>
+          <span className="row__value">
+            <span className={sendOn ? "status status--ok" : "status status--unknown"}>
+              {sendOn ? "granted" : "not granted (P4b)"}
+            </span>
+            <button
+              className="button"
+              style={{ marginLeft: 12 }}
+              disabled
+              title="gmail.send is gated behind P4b. Toggle disabled in this build."
+            >
+              Enable Gmail send (P4b)
+            </button>
+          </span>
+        </div>
+        {error && <div className="error">{error}</div>}
+        {perms.state === "err" && <div className="error">{perms.error}</div>}
+      </div>
+    </section>
   );
 }
 

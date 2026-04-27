@@ -9,6 +9,7 @@
 //             raw.sqlite + v1 derived tables for the webview).
 
 import 'dotenv/config';
+import { createHash } from 'node:crypto';
 import express from 'express';
 import { existsSync } from 'node:fs';
 
@@ -136,6 +137,32 @@ app.get('/threads/:id', (req, res) => {
 });
 
 // ----- /contacts — list view ----------------------------------------------
+
+// ----- /gmail/drafts — P4 write seam (gmail.compose) ----------------------
+//
+// The Python sidecar POSTs an RFC-822 payload here when the user approves a
+// "Save as Gmail Draft" action. P4a ships with the no-network mock baked in;
+// the real google-apis client wiring lands once the user grants gmail.compose
+// in Settings → Permissions (P4 final). The mock returns a deterministic
+// gmail_draft_id so audit-log tests stay stable.
+
+app.post('/gmail/drafts', (req, res) => {
+  const { raw_rfc822 } = req.body || {};
+  if (typeof raw_rfc822 !== 'string' || raw_rfc822.length === 0) {
+    return res.status(400).json({ error: 'raw_rfc822 must be a non-empty string' });
+  }
+  // No real Gmail call yet. Return a deterministic id so the approval audit
+  // row carries something stable. The Python side hashes the body for its
+  // own mock id; here we keep it simple and tag the response as `mocked`.
+  const hash = createHash('sha256').update(raw_rfc822).digest('hex');
+  res.json({
+    gmail_draft_id: `ingester-mock-${hash.slice(0, 16)}`,
+    rfc822_size: raw_rfc822.length,
+    mocked: true,
+    note:
+      'P4a stub. Wire users.drafts.create here once gmail.compose scope is granted.',
+  });
+});
 
 app.get('/contacts', (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 200, 1000);

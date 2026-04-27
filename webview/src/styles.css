@@ -670,3 +670,216 @@ code {
 .ask__err {
   color: #dc2626;
 }
+
+/* ----- Drafts (P4a) ------------------------------------------------ */
+
+.drafts__generate {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.drafts__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--muted, #555);
+  margin-bottom: 0.75rem;
+}
+
+.drafts__input {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border, #d4d4d4);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.drafts__input:disabled {
+  background: #f4f4f4;
+  color: #666;
+}
+
+.drafts__textarea {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border, #d4d4d4);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.drafts__textarea:disabled {
+  background: #f4f4f4;
+  color: #444;
+}
+
+.drafts__split {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 1rem;
+}
+
+.drafts__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.drafts__list-item {
+  text-align: left;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #d4d4d4);
+  border-radius: 4px;
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  font: inherit;
+}
+
+.drafts__list-item:hover {
+  border-color: #2563eb;
+}
+
+.drafts__list-item--active {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.drafts__list-subject {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  font-size: 0.92rem;
+}
+
+.drafts__list-meta {
+  font-size: 0.8rem;
+  color: var(--muted, #666);
+}
+
+.drafts__detail {
+  border: 1px solid var(--border, #e4e4e4);
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  background: var(--card-bg, #fff);
+}
+
+.drafts__header {
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.drafts__hash {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+}
+
+.drafts__rationale {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #f9fafb;
+  border-left: 3px solid #6b7280;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.drafts__cited {
+  margin-top: 0.75rem;
+  font-size: 0.88rem;
+}
+
+.drafts__cited ul {
+  margin: 0.4rem 0 0 0;
+  padding-left: 1rem;
+  list-style: disc;
+}
+
+.drafts__msgid {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  margin-right: 0.4rem;
+  background: #f1f5f9;
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+}
+
+.drafts__cta {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border, #e4e4e4);
+}
+
+.drafts__undo {
+  margin-top: 1rem;
+  padding: 0.6rem 0.8rem;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.92rem;
+}
+
+.drafts__outcome {
+  margin-top: 1rem;
+  padding: 0.6rem 0.8rem;
+  background: #d1fae5;
+  border-left: 3px solid #16a34a;
+  font-size: 0.92rem;
+}
+
+.drafts__banner {
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  background: #fff7ed;
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.button--warn {
+  background: #fef2f2;
+  border-color: #ef4444;
+  color: #b91c1c;
+}
+
+.button--warn:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
+.button--ghost {
+  background: transparent;
+}
+
+/* Pills for new statuses */
+.pill--pending,
+.pill--approve { background: #fef3c7; color: #92400e; }
+.pill--approved { background: #dbeafe; color: #1e3a8a; }
+.pill--saved_as_draft,
+.pill--save_as_draft { background: #d1fae5; color: #065f46; }
+.pill--sent,
+.pill--send { background: #d1fae5; color: #065f46; }
+.pill--rejected,
+.pill--reject { background: #fee2e2; color: #991b1b; }
+.pill--cancel,
+.pill--cancelled { background: #f3f4f6; color: #4b5563; }
+.pill--auth_grant,
+.pill--auth_revoke { background: #ede9fe; color: #5b21b6; }
+.pill--expired { background: #fef2f2; color: #991b1b; }
+
+/* table cell variants used by Sent tab */
+.cell--mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+}

@@ -222,6 +222,21 @@
     "source_correction_ids": [],
     "confidence": "high"
   },
+  "_draft_doc": "Each draft:<thread_id>::<intent> entry below is a hand-authored DraftReply for the fixture data. Same late-binding rule as query: the builder requires extract+rollup+reconcile to have populated derived.sqlite first, otherwise the rollup field of the prompt payload doesn't match what the agent will see at runtime.",
+  "draft:fix-thread-102::Reply to Adam Moore confirming the Thursday 2pm call": {
+    "thread_id": "fix-thread-102",
+    "in_reply_to_message_id": "fix-msg-102a",
+    "to_emails": ["adam@vectorlabs.io"],
+    "cc_emails": [],
+    "bcc_emails": [],
+    "subject": "Re: Quick call this week?",
+    "body": "Hi Adam — Thursday at 2pm works for me. I'll send a calendar invite shortly. Looking forward to it.\n\n—Raphael",
+    "rationale": "Adam proposed Thursday 2pm in fix-msg-102a; the rollup tags him as a recruiter intro from Morgan, so I matched the warm-but-brief tone from user_style and confirmed without re-litigating the time.",
+    "cited_facts": [
+      {"fact_id": "thursday_2pm_proposal", "source_message_ids": ["fix-msg-102a"]}
+    ],
+    "confidence": "high"
+  },
   "_query_doc": "Each query:<question> entry below is a list of canned ReAct turns. The fixture builder replays the turns one-by-one, hashing the (system + transcript-so-far) prompt at each step and pairing it with the canned model JSON. Tool results between turns are produced live by query_tools against the populated derived.sqlite, so the test exercises the same code path the production driver does.",
   "query:who am I ghosting?": [
     {

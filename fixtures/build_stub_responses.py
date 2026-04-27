@@ -332,12 +332,75 @@ def build_query_entries(outputs: dict, model: str) -> dict:
     return out
 
 
+def build_draft_entries(outputs: dict, model: str) -> dict:
+    """Stub responses for draft_agent.run(thread_id, intent).
+
+    Like the query stubs, draft prompts depend on derived.sqlite being
+    populated (`thread_facts` + `contact_rollups` get read into the prompt
+    payload). We bail if rollups are empty — same two-phase pattern.
+    """
+    out: dict = {}
+
+    # Late imports — keeps the import order matching the runtime driver.
+    from draft_agent import _build_payload  # noqa: WPS433
+    from lib import db as db_mod  # noqa: WPS433
+
+    derived = db_mod.open_derived()
+    try:
+        n_rollups = derived.execute(
+            "SELECT COUNT(*) AS c FROM contact_rollups"
+        ).fetchone()["c"]
+        n_facts = derived.execute(
+            "SELECT COUNT(*) AS c FROM thread_facts"
+        ).fetchone()["c"]
+    finally:
+        derived.close()
+    if n_rollups == 0 or n_facts == 0:
+        return out
+
+    system = pmod.compose_system_prompt(
+        "draft.md",
+        schemas={"DRAFT_SCHEMA": "draft.schema.json"},
+    )
+
+    for key, value in outputs.items():
+        if not key.startswith("draft:") or not isinstance(value, dict):
+            continue
+        # Format: draft:<thread_id>::<intent>
+        rest = key.removeprefix("draft:")
+        if "::" not in rest:
+            continue
+        thread_id, intent = rest.split("::", 1)
+
+        try:
+            payload = _build_payload(thread_id, intent)
+        except LookupError:
+            # Fixture mentions a thread that hasn't been loaded yet — skip.
+            continue
+
+        user_prompt = (
+            "Write one DraftReply JSON object for the request below.\n\n"
+            f"<request>\n{json.dumps(payload, indent=2)}\n</request>"
+        )
+        out[_hash(model, system, user_prompt)] = {
+            "output": json.dumps(value),
+            "input_tokens": 1800,
+            "output_tokens": 220,
+            "latency_ms": 80,
+        }
+    return out
+
+
 def main() -> None:
     if len(sys.argv) < 2:
-        print("usage: build_stub_responses.py <output_path> [--include-query]", file=sys.stderr)
+        print(
+            "usage: build_stub_responses.py <output_path> [--include-query] [--include-draft]",
+            file=sys.stderr,
+        )
         sys.exit(2)
     output_path = Path(sys.argv[1])
     include_query = "--include-query" in sys.argv[2:]
+    include_draft = "--include-draft" in sys.argv[2:]
 
     seed = json.loads(SEED_PATH.read_text())
     outputs = json.loads(OUTPUTS_PATH.read_text())
@@ -350,6 +413,8 @@ def main() -> None:
     stub.update(build_rollup_entries(seed, outputs, model))
     if include_query:
         stub.update(build_query_entries(outputs, model))
+    if include_draft:
+        stub.update(build_draft_entries(outputs, model))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(stub, indent=2))

@@ -129,6 +129,88 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
   dropped_count       INTEGER NOT NULL DEFAULT 0,
   notes               TEXT
 );
+
+-- ---- P4: drafts / approvals / audit_log -------------------------------
+-- Per BUILD §8 + §12. The full safety guarantee is:
+--   1. Drafts always go through `drafts` first (no direct send path).
+--   2. Send/save requires an `approvals` row whose hash matches the
+--      current draft body — so post-approval edits invalidate.
+--   3. `audit_log` is append-only via SQLite triggers, with a sha256
+--      chain pointer (prev_hash) so external tampering is detectable.
+-- The same invariants are also enforced in `lib.approval`, but having
+-- them at the schema level is the belt-and-suspenders we want for
+-- write actions.
+
+CREATE TABLE IF NOT EXISTS drafts (
+  id                       TEXT PRIMARY KEY,
+  thread_id                TEXT NOT NULL,
+  in_reply_to_message_id   TEXT,
+  to_emails                TEXT NOT NULL,        -- JSON array
+  cc_emails                TEXT NOT NULL DEFAULT '[]',
+  bcc_emails               TEXT NOT NULL DEFAULT '[]',
+  subject                  TEXT NOT NULL,
+  body                     TEXT NOT NULL,
+  draft_hash               TEXT NOT NULL,        -- sha256 of canonical {to,cc,bcc,subject,body}
+  rationale                TEXT NOT NULL,
+  cited_facts_json         TEXT NOT NULL,        -- array of {fact_id, source_message_ids[]}
+  confidence               TEXT NOT NULL,
+  intent                   TEXT,                 -- the human-language ask that produced this draft
+  created_at               TIMESTAMP NOT NULL,
+  updated_at               TIMESTAMP NOT NULL,
+  status                   TEXT NOT NULL,        -- pending | approved | sent | saved_as_draft | rejected | expired
+  approval_id              TEXT,                 -- FK -> approvals.id (nullable)
+  gmail_draft_id           TEXT,                 -- assigned by Gmail on save_as_draft
+  gmail_message_id         TEXT,                 -- assigned by Gmail on send (P4b)
+  model_version            TEXT NOT NULL,
+  agent_run_id             TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(status);
+CREATE INDEX IF NOT EXISTS idx_drafts_thread ON drafts(thread_id);
+
+CREATE TABLE IF NOT EXISTS approvals (
+  id                       TEXT PRIMARY KEY,
+  draft_id                 TEXT NOT NULL,
+  approval_hash            TEXT NOT NULL,        -- sha256 of canonical body at approval time
+  approved_by              TEXT NOT NULL,        -- mailbox owner (raphaeljafri@gmail.com)
+  approved_at              TIMESTAMP NOT NULL,
+  expires_at               TIMESTAMP NOT NULL,   -- 5 min after approved_at
+  action                   TEXT NOT NULL,        -- 'send' | 'save_as_draft'
+  undo_window_seconds      INTEGER NOT NULL DEFAULT 30,
+  cancelled_at             TIMESTAMP,
+  executed_at              TIMESTAMP,
+  result_status            TEXT NOT NULL DEFAULT 'pending'  -- pending | cancelled | executed | failed
+);
+CREATE INDEX IF NOT EXISTS idx_approvals_draft ON approvals(draft_id);
+CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(result_status);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  id                       TEXT PRIMARY KEY,
+  event_at                 TIMESTAMP NOT NULL,
+  event_type               TEXT NOT NULL,        -- send | save_as_draft | reject | cancel | approve | auth_grant | auth_revoke | config_change
+  draft_id                 TEXT,
+  approval_id              TEXT,
+  draft_hash               TEXT,
+  approval_hash            TEXT,
+  gmail_message_id         TEXT,
+  gmail_draft_id           TEXT,
+  payload_json             TEXT NOT NULL,        -- non-sensitive metadata only
+  prev_id                  TEXT,                 -- pointer to prior row (chain head = NULL)
+  prev_hash                TEXT                  -- sha256 of prior row's canonical bytes
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_event_at ON audit_log(event_at);
+CREATE INDEX IF NOT EXISTS idx_audit_log_event_type ON audit_log(event_type);
+CREATE INDEX IF NOT EXISTS idx_audit_log_draft ON audit_log(draft_id);
+
+-- Append-only triggers — schema-level enforcement. The Python helpers in
+-- lib.approval also refuse to issue UPDATE/DELETE, but these triggers
+-- catch buggy code and any direct sqlite shell mistakes.
+CREATE TRIGGER IF NOT EXISTS audit_log_no_update
+  BEFORE UPDATE ON audit_log
+  BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS audit_log_no_delete
+  BEFORE DELETE ON audit_log
+  BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
 """
 
 AGENT_RUNS_SCHEMA = """

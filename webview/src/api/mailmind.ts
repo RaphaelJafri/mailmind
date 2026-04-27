@@ -25,6 +25,20 @@ async function postJson<T>(url: string, body: unknown, signal?: AbortSignal): Pr
   return (await res.json()) as T;
 }
 
+async function patchJson<T>(url: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+    signal,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`${url} → ${res.status}: ${text}`);
+  }
+  return (await res.json()) as T;
+}
+
 // ----- Inbox / Threads -----
 
 export interface ThreadRow {
@@ -273,6 +287,176 @@ export type QueryEvent =
   | { kind: "answer"; answer: string; truncated: boolean; reason?: string }
   | { kind: "done"; tool_calls: number; wall_ms: number; input_tokens: number; output_tokens: number; cost_usd: number; stubbed: boolean; truncated: boolean; reason: string | null }
   | { kind: "error"; error: string };
+
+// ----- Drafts (P4a) -----
+
+export interface DraftRow {
+  id: string;
+  thread_id: string;
+  in_reply_to_message_id: string | null;
+  to_emails: string[];
+  cc_emails: string[];
+  bcc_emails: string[];
+  subject: string;
+  body: string;
+  draft_hash: string;
+  rationale: string;
+  cited_facts: Array<{ fact_id: string; source_message_ids: string[] }>;
+  confidence: "high" | "medium" | "low";
+  intent: string | null;
+  created_at: string;
+  updated_at: string;
+  status: "pending" | "approved" | "saved_as_draft" | "sent" | "rejected" | "expired";
+  approval_id: string | null;
+  gmail_draft_id: string | null;
+  gmail_message_id: string | null;
+  model_version: string;
+  agent_run_id: string;
+}
+
+export interface DraftGenerateResponse {
+  draft_id: string;
+  thread_id: string;
+  intent: string;
+  draft: {
+    thread_id: string;
+    in_reply_to_message_id: string | null;
+    to_emails: string[];
+    cc_emails: string[];
+    bcc_emails: string[];
+    subject: string;
+    body: string;
+    rationale: string;
+    cited_facts: Array<{ fact_id: string; source_message_ids: string[] }>;
+    confidence: "high" | "medium" | "low";
+  };
+  draft_hash: string;
+  stubbed: boolean;
+  input_tokens: number;
+  output_tokens: number;
+  latency_ms: number;
+  agent_run_id: string;
+}
+
+export function generateDraft(thread_id: string, intent: string) {
+  return postJson<DraftGenerateResponse>(`${AGENTS_URL}/draft/generate`, {
+    thread_id,
+    intent,
+  });
+}
+
+export function listDrafts(status?: DraftRow["status"], signal?: AbortSignal) {
+  const q = status ? `?status=${encodeURIComponent(status)}` : "";
+  return getJson<{ drafts: DraftRow[]; count: number }>(
+    `${AGENTS_URL}/drafts${q}`,
+    signal,
+  );
+}
+
+export function getDraft(draftId: string, signal?: AbortSignal) {
+  return getJson<DraftRow>(`${AGENTS_URL}/drafts/${draftId}`, signal);
+}
+
+export function editDraft(
+  draftId: string,
+  edits: {
+    subject?: string;
+    body?: string;
+    to_emails?: string[];
+    cc_emails?: string[];
+    bcc_emails?: string[];
+  },
+) {
+  return patchJson<DraftRow>(`${AGENTS_URL}/drafts/${draftId}`, edits);
+}
+
+export interface ApprovalResponse {
+  approval_id: string;
+  draft_id: string;
+  action: "save_as_draft" | "send";
+  approved_at: string;
+  expires_at: string;
+  undo_window_seconds: number;
+}
+
+export function approveDraft(
+  draftId: string,
+  opts: { action?: "save_as_draft" | "send"; undo_window_seconds?: number } = {},
+) {
+  return postJson<ApprovalResponse>(`${AGENTS_URL}/drafts/${draftId}/approve`, {
+    action: opts.action ?? "save_as_draft",
+    undo_window_seconds: opts.undo_window_seconds,
+  });
+}
+
+export function cancelApproval(draftId: string, approval_id: string, reason?: string) {
+  return postJson<{ approval_id: string; draft_id: string; cancelled_at: string; reason: string | null }>(
+    `${AGENTS_URL}/drafts/${draftId}/cancel`,
+    { approval_id, reason: reason ?? null },
+  );
+}
+
+export function executeSaveAsDraft(draftId: string, approval_id: string) {
+  return postJson<{
+    approval_id: string;
+    draft_id: string;
+    action: "save_as_draft";
+    executed_at: string;
+    gmail_draft_id: string | null;
+    gmail_message_id: string | null;
+    next_status: "saved_as_draft";
+  }>(`${AGENTS_URL}/drafts/${draftId}/save_as_gmail_draft`, { approval_id });
+}
+
+export function rejectDraft(draftId: string, reason?: string) {
+  return postJson<{ draft_id: string; rejected_at: string; reason: string | null }>(
+    `${AGENTS_URL}/drafts/${draftId}/reject`,
+    { reason: reason ?? null },
+  );
+}
+
+export interface AuditEvent {
+  id: string;
+  event_at: string;
+  event_type: string;
+  draft_id: string | null;
+  approval_id: string | null;
+  draft_hash: string | null;
+  approval_hash: string | null;
+  gmail_message_id: string | null;
+  gmail_draft_id: string | null;
+  payload_json: string;
+  prev_id: string | null;
+  prev_hash: string | null;
+}
+
+export function listAuditLog(opts: { limit?: number; event_type?: string } = {}, signal?: AbortSignal) {
+  const qp = new URLSearchParams();
+  if (opts.limit) qp.set("limit", String(opts.limit));
+  if (opts.event_type) qp.set("event_type", opts.event_type);
+  const q = qp.toString();
+  return getJson<{
+    events: AuditEvent[];
+    count: number;
+    chain_ok: boolean;
+    chain_total: number;
+    broken_at: string | null;
+  }>(`${AGENTS_URL}/audit_log${q ? "?" + q : ""}`, signal);
+}
+
+export interface PermissionsRow {
+  "gmail.compose": boolean;
+  "gmail.send": boolean;
+  configured: boolean;
+}
+
+export function getPermissions(signal?: AbortSignal) {
+  return getJson<PermissionsRow>(`${AGENTS_URL}/permissions`, signal);
+}
+
+export function setPermissions(opts: { gmail_compose?: boolean; gmail_send?: boolean }) {
+  return postJson<PermissionsRow>(`${AGENTS_URL}/permissions`, opts);
+}
 
 /**
  * Open an SSE-style fetch against /query and call onEvent for each line of

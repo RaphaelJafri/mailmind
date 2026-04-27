@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DraftReply",
+  "description": "Output of agents/draft_agent.py. Every field is required so post-hoc validation is unambiguous; the agent is forbidden from emitting partials.",
+  "type": "object",
+  "required": [
+    "thread_id",
+    "to_emails",
+    "subject",
+    "body",
+    "rationale",
+    "cited_facts",
+    "confidence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "thread_id": {
+      "type": "string",
+      "description": "Thread the draft replies into. Must match the input payload's thread_id."
+    },
+    "in_reply_to_message_id": {
+      "type": ["string", "null"],
+      "description": "The message_id this reply targets. NULL only for first-message threads (rare)."
+    },
+    "to_emails": {
+      "type": "array",
+      "items": {"type": "string"},
+      "minItems": 1,
+      "description": "Primary recipients. Default: the most recent non-user message's from_email."
+    },
+    "cc_emails": {
+      "type": "array",
+      "items": {"type": "string"},
+      "default": []
+    },
+    "bcc_emails": {
+      "type": "array",
+      "items": {"type": "string"},
+      "default": []
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "If replying, prefix with 'Re: ' unless the existing subject already starts with one."
+    },
+    "body": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8000,
+      "description": "Plain-text reply body. No HTML. End with the user's preferred sign-off if known."
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000,
+      "description": "1-3 sentences explaining what facts informed this draft and why this tone."
+    },
+    "cited_facts": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Each cited fact ties claims in the draft back to source messages. fact_id is a free-form short label (e.g. 'thursday_2pm_proposal'); source_message_ids must exist in the input thread.",
+      "items": {
+        "type": "object",
+        "required": ["fact_id", "source_message_ids"],
+        "additionalProperties": false,
+        "properties": {
+          "fact_id": {"type": "string", "minLength": 1, "maxLength": 80},
+          "source_message_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "confidence": {
+      "enum": ["high", "medium", "low"],
+      "description": "high = ready to send, medium = review, low = surface for human guidance only."
+    }
+  }
+}
