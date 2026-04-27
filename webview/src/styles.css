@@ -1027,6 +1027,44 @@ code {
   font-family: var(--mono);
 }
 
+/* ----- Inbox: sync row -------------------------------------------------- */
+
+.inbox__sync-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.5rem 0 0.75rem;
+  flex-wrap: wrap;
+}
+
+.inbox__sync-status {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.inbox__sync-status--warn {
+  color: var(--warn);
+}
+
+.inbox__sync-status code {
+  font-size: 0.8rem;
+}
+
+.inbox__sync-result {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--good);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.inbox__sync-result strong {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
 /* ----- P5b: Eval tab ---------------------------------------------------- */
 
 .eval__counts {

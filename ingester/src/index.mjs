@@ -16,6 +16,7 @@ import { existsSync } from 'node:fs';
 import { dbPath, openRaw, openDerived } from './lib/db.mjs';
 import { tokensExist } from './lib/gmail-client.mjs';
 import { dataDir } from './lib/paths.mjs';
+import { runSync, readSyncState } from './sync.mjs';
 
 const DEFAULT_PORT = 8766;
 const STARTED_AT = new Date().toISOString();
@@ -162,6 +163,92 @@ app.post('/gmail/drafts', (req, res) => {
     note:
       'P4a stub. Wire users.drafts.create here once gmail.compose scope is granted.',
   });
+});
+
+// ----- /sync_state — read-only "when did we last sync" -------------------
+
+app.get('/sync_state', (_req, res) => {
+  // Surface "have we ever synced" + the last_sync_at timestamp + whether
+  // OAuth tokens exist. The Inbox tab uses this to render the "Last
+  // synced N minutes ago" caption + decide whether the sync button is
+  // enabled.
+  if (!existsSync(dbPath('raw'))) {
+    return res.json({
+      last_sync_at: null,
+      last_history_id: null,
+      oldest_synced_date: null,
+      tokens_present: tokensExist(),
+      raw_db_present: false,
+    });
+  }
+  const state = readSyncState();
+  res.json({
+    last_sync_at: state?.last_sync_at ?? null,
+    last_history_id: state?.last_history_id ?? null,
+    oldest_synced_date: state?.oldest_synced_date ?? null,
+    tokens_present: tokensExist(),
+    raw_db_present: true,
+  });
+});
+
+// ----- /sync — trigger a Gmail sync from the UI --------------------------
+//
+// Wraps `sync.mjs`'s `runSync()`. Returns when the sync completes (the UI
+// shows a spinner; sync usually takes 5-60s incremental, longer on initial).
+// A module-level lock prevents two concurrent syncs from racing each
+// other on raw.sqlite.
+
+let _syncInFlight = false;
+
+app.post('/sync', async (req, res) => {
+  if (_syncInFlight) {
+    return res.status(409).json({
+      error: 'sync_in_flight',
+      message: 'A sync is already running. Wait for it to finish.',
+    });
+  }
+
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    return res.status(412).json({
+      error: 'oauth_config_missing',
+      message:
+        'GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET not set. Add them to ingester/.env.',
+    });
+  }
+  if (!tokensExist()) {
+    return res.status(412).json({
+      error: 'no_tokens',
+      message:
+        'No Gmail OAuth tokens. Run `cd ingester && npm run auth` first.',
+    });
+  }
+
+  const days = Number.isFinite(Number(req.body?.days)) ? Number(req.body.days) : 30;
+  const full = !!req.body?.full;
+
+  _syncInFlight = true;
+  const startedAt = new Date().toISOString();
+  try {
+    const result = await runSync({ days, full });
+    res.json({
+      ok: true,
+      started_at: startedAt,
+      ...result,
+    });
+  } catch (err) {
+    if (err.code === 'NO_TOKENS') {
+      return res.status(412).json({ error: 'no_tokens', message: err.message });
+    }
+    if (err.code === 'MISSING_OAUTH_CONFIG') {
+      return res
+        .status(412)
+        .json({ error: 'oauth_config_missing', message: err.message });
+    }
+    console.error('[ingester] /sync failed:', err);
+    res.status(500).json({ error: 'sync_failed', message: err.message || String(err) });
+  } finally {
+    _syncInFlight = false;
+  }
 });
 
 app.get('/contacts', (req, res) => {

@@ -73,6 +73,49 @@ export function listThreads(
   );
 }
 
+// ----- Sync -----
+
+export interface SyncStateRow {
+  last_sync_at: string | null;
+  last_history_id: string | null;
+  oldest_synced_date: string | null;
+  tokens_present: boolean;
+  raw_db_present: boolean;
+}
+
+export interface SyncRunResult {
+  ok: true;
+  mode: "initial" | "incremental";
+  account: string;
+  started_at: string;
+  finished_at: string;
+  duration_ms: number;
+  summary: {
+    newMessages: number;
+    newThreads: number;
+    newContacts: number;
+    failures: Array<{ id: string; error: string }>;
+    classification?: {
+      counts: { keep: number; skip: number; newsletter: number; unclassified: number };
+      changed: number;
+    };
+  };
+  report_path: string;
+  sync_state: {
+    last_sync_at: string;
+    last_history_id: string | null;
+    oldest_synced_date: string | null;
+  };
+}
+
+export function getSyncState(signal?: AbortSignal) {
+  return getJson<SyncStateRow>(`${INGESTER_URL}/sync_state`, signal);
+}
+
+export function syncNow(opts: { days?: number; full?: boolean } = {}) {
+  return postJson<SyncRunResult>(`${INGESTER_URL}/sync`, opts);
+}
+
 export function listContacts(limit = 200, signal?: AbortSignal) {
   return getJson<{ contacts: ContactRow[]; count: number }>(
     `${INGESTER_URL}/contacts?limit=${limit}`,

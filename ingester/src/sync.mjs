@@ -348,12 +348,32 @@ function writeReport({ startedAt, mode, summary, profile }) {
   return path;
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+/**
+ * Run one Gmail sync. Used by both the CLI (`npm run sync`) and the HTTP
+ * `POST /sync` endpoint. Returns a structured summary; throws on failure.
+ *
+ * @param {{days?: number, full?: boolean, log?: (m: string) => void}} opts
+ * @returns {Promise<{
+ *   mode: 'initial' | 'incremental',
+ *   account: string,
+ *   started_at: string,
+ *   finished_at: string,
+ *   duration_ms: number,
+ *   summary: {
+ *     newMessages: number, newThreads: number, newContacts: number,
+ *     failures: Array<{id: string, error: string}>,
+ *     classification: object,
+ *   },
+ *   report_path: string,
+ *   sync_state: { last_sync_at: string, last_history_id: string, oldest_synced_date: string }
+ * }>}
+ */
+export async function runSync({ days = 30, full = false, log = console.log } = {}) {
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } = process.env;
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    console.error('GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET missing.');
-    process.exit(3);
+    const err = new Error('GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET missing');
+    err.code = 'MISSING_OAUTH_CONFIG';
+    throw err;
   }
 
   let oauth;
@@ -363,34 +383,31 @@ async function main() {
       clientSecret: GOOGLE_CLIENT_SECRET,
     });
   } catch (err) {
-    if (err.code === 'NO_TOKENS') {
-      console.error(err.message);
-      process.exit(2);
-    }
+    if (err.code === 'NO_TOKENS') throw err;
     throw err;
   }
 
   const client = makeGmailClient(oauth);
   const profile = await client.getProfile();
-  console.log(`Signed in as ${profile.emailAddress} (inbox: ${profile.messagesTotal} msgs)`);
+  log(`Signed in as ${profile.emailAddress} (inbox: ${profile.messagesTotal} msgs)`);
 
   const db = openRaw();
   const startedAt = new Date();
 
   try {
-    const state = args.full ? null : getSyncState(db);
-    const mode = !state || args.full ? 'initial' : 'incremental';
+    const state = full ? null : getSyncState(db);
+    const mode = !state || full ? 'initial' : 'incremental';
 
     let summary;
     if (mode === 'initial') {
-      summary = await initialSync({ db, client, profile, days: args.days });
+      summary = await initialSync({ db, client, profile, days });
     } else {
       summary = await incrementalSync({ db, client, profile, syncState: state });
     }
 
     const filters = loadFilters();
     const cls = reclassifyAll(db, filters);
-    console.log(
+    log(
       `  Classified: keep=${cls.counts.keep} skip=${cls.counts.skip} ` +
         `newsletter=${cls.counts.newsletter} unclassified=${cls.counts.unclassified} ` +
         `(${cls.changed} changed)`
@@ -399,17 +416,71 @@ async function main() {
 
     const reportPath = writeReport({ startedAt, mode, summary, profile });
 
-    console.log(
+    const finishedAt = new Date();
+    log(
       `\nDone. +${summary.newMessages} msg, +${summary.newThreads} threads, +${summary.newContacts} contacts.`
     );
-    console.log(`  Report: ${reportPath}`);
+    log(`  Report: ${reportPath}`);
+
+    const finalState = getSyncState(db) || {};
+
+    return {
+      mode,
+      account: profile.emailAddress,
+      started_at: startedAt.toISOString(),
+      finished_at: finishedAt.toISOString(),
+      duration_ms: finishedAt - startedAt,
+      summary,
+      report_path: reportPath,
+      sync_state: {
+        last_sync_at: finalState.last_sync_at || finishedAt.toISOString(),
+        last_history_id: finalState.last_history_id || null,
+        oldest_synced_date: finalState.oldest_synced_date || null,
+      },
+    };
   } finally {
     db.close();
   }
 }
 
-main().catch((err) => {
-  console.error('sync failed:', err.message || err);
-  if (err.stack && process.env.MAILMIND_DEBUG) console.error(err.stack);
-  process.exit(1);
-});
+/** Read the current sync_state row. Returns null if no sync has run yet. */
+export function readSyncState() {
+  const db = openRaw();
+  try {
+    const row = getSyncState(db);
+    if (!row) return null;
+    return {
+      last_sync_at: row.last_sync_at || null,
+      last_history_id: row.last_history_id || null,
+      oldest_synced_date: row.oldest_synced_date || null,
+    };
+  } finally {
+    db.close();
+  }
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  try {
+    await runSync({ days: args.days, full: args.full });
+  } catch (err) {
+    if (err.code === 'NO_TOKENS') {
+      console.error(err.message);
+      process.exit(2);
+    }
+    if (err.code === 'MISSING_OAUTH_CONFIG') {
+      console.error(err.message);
+      process.exit(3);
+    }
+    console.error('sync failed:', err.message || err);
+    if (err.stack && process.env.MAILMIND_DEBUG) console.error(err.stack);
+    process.exit(1);
+  }
+}
+
+// Only run main() when invoked directly via the CLI, not when imported by
+// the HTTP server.
+import { fileURLToPath } from 'node:url';
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main();
+}

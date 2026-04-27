@@ -14,6 +14,7 @@ const { openRaw, openDerived } = await import('../src/lib/db.mjs');
 const { threadContentHash } = await import('../src/lib/thread-hash.mjs');
 const { extractBodies, normalizeMessage } = await import('../src/lib/gmail-client.mjs');
 const { classifyThread, isMarketingCandidate } = await import('../src/lib/filters.mjs');
+const { readSyncState } = await import('../src/sync.mjs');
 
 test('openRaw creates schema idempotently', () => {
   const db1 = openRaw();
@@ -173,4 +174,30 @@ test('isMarketingCandidate: 50% threshold', () => {
   ok(isMarketingCandidate([m(['CATEGORY_PROMOTIONS']), m(['CATEGORY_PROMOTIONS'])]));
   ok(isMarketingCandidate([m(['CATEGORY_PROMOTIONS']), m([])]));
   ok(!isMarketingCandidate([m([]), m([]), m(['CATEGORY_PROMOTIONS'])]));
+});
+
+test('readSyncState returns null on a fresh raw.sqlite (no sync run)', () => {
+  // openRaw creates the table; readSyncState reads it. Empty table → null.
+  const before = openRaw();
+  before.close();
+  const state = readSyncState();
+  equal(state, null);
+});
+
+test('readSyncState reflects a written sync_state row', () => {
+  const db = openRaw();
+  db.prepare(
+    `INSERT INTO sync_state (id, last_history_id, last_sync_at, oldest_synced_date)
+     VALUES (1, '12345', '2026-04-27T15:00:00Z', '2026-03-28T00:00:00Z')
+     ON CONFLICT(id) DO UPDATE SET
+       last_history_id = excluded.last_history_id,
+       last_sync_at = excluded.last_sync_at,
+       oldest_synced_date = excluded.oldest_synced_date`
+  ).run();
+  db.close();
+  const state = readSyncState();
+  ok(state);
+  equal(state.last_history_id, '12345');
+  equal(state.last_sync_at, '2026-04-27T15:00:00Z');
+  equal(state.oldest_synced_date, '2026-03-28T00:00:00Z');
 });

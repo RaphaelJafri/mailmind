@@ -31,6 +31,16 @@ export MAILMIND_DATA_DIR="${MAILMIND_DATA_DIR:-$(mktemp -d -t mailmind-p5b)}"
 export MAILMIND_LOGS_DIR="$MAILMIND_DATA_DIR/logs"
 mkdir -p "$MAILMIND_LOGS_DIR"
 
+# Force stub-only mode for the LLM judge. With a fake key the SDK fails
+# fast on the actual HTTP request, which lets eval_agent's heuristic
+# fallback (tone=0.5, would_send=false, overall=0.4 + 0.4 * must_cov) take
+# over deterministically. Without this override, a real
+# GOOGLE_GENAI_API_KEY in the developer's shell would route the judge
+# through live Gemini, and Gemini's non-deterministic verdicts would make
+# the "no regression on no-change re-run" assertion flap. Pytest fixtures
+# do the same thing.
+export GOOGLE_GENAI_API_KEY="fake-key-for-stub"
+
 INGESTER_PORT="${INGESTER_PORT:-8891}"
 AGENTS_PORT="${AGENTS_PORT:-8892}"
 
