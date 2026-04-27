@@ -13,13 +13,19 @@ import os
 import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from lib import gemini_runner, paths, vertex_config
 
-load_dotenv()
+# Pin dotenv to mailmind/agents/.env only. Without an explicit path, dotenv
+# walks up the directory tree and picks up unrelated .env files (e.g. a
+# desktop-level one from another project), which silently overrides our
+# GCP project resolution. Pin it.
+_AGENTS_ENV = Path(__file__).resolve().parent / ".env"
+load_dotenv(dotenv_path=_AGENTS_ENV, override=False)
 
 STARTED_AT = datetime.now(timezone.utc).isoformat()
 

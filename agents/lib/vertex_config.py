@@ -39,11 +39,21 @@ def detect_auth_mode() -> AuthMode:
 
 
 def project_id() -> str | None:
-    """Resolve the active GCP project for Vertex AI calls."""
+    """Resolve the active GCP project for Vertex AI calls.
+
+    Priority order:
+    1. ADC `quota_project_id` (set explicitly by the user with
+       `gcloud auth application-default set-quota-project ...`) — most reliable.
+    2. GOOGLE_CLOUD_PROJECT env var — accepted, but loses to ADC if both set.
+    3. GCLOUD_PROJECT env var — legacy fallback.
+
+    ADC wins because env vars get set by adjacent projects (a workspace-wide
+    .env, an exported shell var) and silently misroute calls.
+    """
     return (
-        os.environ.get("GOOGLE_CLOUD_PROJECT")
+        _read_adc_project()
+        or os.environ.get("GOOGLE_CLOUD_PROJECT")
         or os.environ.get("GCLOUD_PROJECT")
-        or _read_adc_project()
     )
 
 
