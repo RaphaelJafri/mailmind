@@ -1,0 +1,69 @@
+# Node
+node_modules/
+npm-debug.log*
+.npm
+.pnpm-store/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+.uv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+
+# Rust / Tauri
+shell/target/
+shell/Cargo.lock
+*.app
+*.dmg
+
+# Tauri build artifacts
+src-tauri/target/
+
+# Vite / webview build output
+webview/dist/
+webview/.vite/
+
+# Local dev databases + tokens (NEVER commit)
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+data/
+tokens/
+*.tokens.json
+.env
+.env.local
+.env.*.local
+
+# Eval data is private (real Gmail content)
+evals/labeled.jsonl
+evals/results.jsonl
+evals/baseline.jsonl
+
+# Schema-failure dumps (may contain Gmail content)
+schema_failures/
+
+# Reports (per-run, regenerable)
+reports/
+
+# Few-shot examples are generated from corrections (regenerable)
+prompts/few-shot-examples.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
