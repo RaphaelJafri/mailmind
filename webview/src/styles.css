@@ -397,3 +397,61 @@ code {
 .taglink--active {
   background: rgba(88, 166, 255, 0.15);
 }
+
+/* P2 additions */
+.followup-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.followup-summary__cell {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  background: var(--panel);
+}
+
+.followup-summary__cell strong {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.rollup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.85rem;
+}
+
+.rollup-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rollup-card__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rollup-card__summary {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.rollup-card__meta,
+.rollup-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}

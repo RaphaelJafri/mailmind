@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Correction",
+  "description": "User-authored correction. Append-only: corrections are never overwritten, only added.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entity_type", "field", "new_value"],
+  "properties": {
+    "contact_email": {
+      "type": ["string", "null"],
+      "description": "The contact this correction applies to. NULL for global corrections."
+    },
+    "entity_type": {
+      "type": "string",
+      "enum": ["rollup", "next_step", "tag", "user_context"]
+    },
+    "entity_id": {
+      "type": ["string", "null"],
+      "description": "Row id this correction targets when entity_type refers to a specific row (e.g. next_step id)."
+    },
+    "field": {
+      "type": "string",
+      "minLength": 1
+    },
+    "old_value": {
+      "type": ["string", "null"]
+    },
+    "new_value": {
+      "type": "string",
+      "description": "Stringified new value. Arrays and objects should be JSON-stringified before POST."
+    },
+    "user_note": {
+      "type": ["string", "null"]
+    }
+  }
+}

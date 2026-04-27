@@ -3,6 +3,7 @@ import Setup from "./tabs/Setup";
 import Inbox from "./tabs/Inbox";
 import Triage from "./tabs/Triage";
 import Tags from "./tabs/Tags";
+import Followups from "./tabs/Followups";
 import Contacts from "./tabs/Contacts";
 
 const TABS = [
@@ -10,6 +11,7 @@ const TABS = [
   { id: "inbox", label: "Inbox", component: Inbox },
   { id: "triage", label: "Triage", component: Triage },
   { id: "tags", label: "Tags", component: Tags },
+  { id: "followups", label: "Follow-ups", component: Followups },
   { id: "contacts", label: "Contacts", component: Contacts },
 ] as const;
 
@@ -22,7 +24,7 @@ export default function App() {
     <div className="app">
       <header className="app__header">
         <span className="app__title">mailmind</span>
-        <span className="app__pill">P1 · agents</span>
+        <span className="app__pill">P2 · relationships</span>
         <nav className="tabs">
           {TABS.map((t) => (
             <button

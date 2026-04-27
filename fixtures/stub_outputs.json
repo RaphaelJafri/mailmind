@@ -82,6 +82,64 @@
     "topic_tags": ["automated", "marketing"],
     "confidence": "high"
   },
+  "extract:fix-thread-101": {
+    "thread_id": "fix-thread-101",
+    "participants": ["morgan@northstar-talent.com", "raphaeljafri@gmail.com"],
+    "summary": "Morgan checked whether Adam at Vector Labs had reached out; Raphael said no and asked Morgan to nudge Adam.",
+    "commitments_by_user": [],
+    "commitments_by_others": [
+      {
+        "who": "morgan@northstar-talent.com",
+        "description": "Nudge Adam at Vector Labs about the pending intro.",
+        "due_date": null,
+        "source_message_ids": ["fix-msg-101b"]
+      }
+    ],
+    "open_questions": [
+      {
+        "question": "Has Vector Labs followed up about the senior eng role?",
+        "asked_by": "user",
+        "source_message_ids": ["fix-msg-101b"]
+      }
+    ],
+    "last_message_from": "user",
+    "last_message_date": "2026-04-19T10:00:00Z",
+    "sentiment": "neutral",
+    "topic_tags": ["recruiting", "followup"],
+    "confidence": "high"
+  },
+  "extract:fix-thread-102": {
+    "thread_id": "fix-thread-102",
+    "participants": ["adam@vectorlabs.io", "raphaeljafri@gmail.com"],
+    "summary": "Adam Moore at Vector Labs asked Raphael to confirm a 30-minute intro call on Thursday at 2pm; offered to flex if needed.",
+    "commitments_by_user": [],
+    "commitments_by_others": [],
+    "open_questions": [
+      {
+        "question": "Confirm Thursday 2pm call time, or propose an alternative?",
+        "asked_by": "other",
+        "source_message_ids": ["fix-msg-102a"]
+      }
+    ],
+    "last_message_from": "other",
+    "last_message_date": "2026-04-21T15:00:00Z",
+    "sentiment": "positive",
+    "topic_tags": ["recruiting", "scheduling"],
+    "confidence": "high"
+  },
+  "extract:fix-thread-103": {
+    "thread_id": "fix-thread-103",
+    "participants": ["morgan@northstar-talent.com", "raphaeljafri@gmail.com"],
+    "summary": "Morgan let Raphael know they were moving from the founder-recruiting desk to eng-leadership; Raphael acknowledged.",
+    "commitments_by_user": [],
+    "commitments_by_others": [],
+    "open_questions": [],
+    "last_message_from": "user",
+    "last_message_date": "2026-03-13T08:00:00Z",
+    "sentiment": "neutral",
+    "topic_tags": ["recruiting", "informational"],
+    "confidence": "high"
+  },
   "tagger:fix-msg-001a": {
     "message_id": "fix-msg-001a",
     "tags": {
@@ -120,6 +178,48 @@
       "project": []
     },
     "rationale": "Pure retail marketing blast; thread is disposition=skip.",
+    "confidence": "high"
+  },
+  "rollup:morgan@northstar-talent.com": {
+    "contact_email": "morgan@northstar-talent.com",
+    "relationship_summary": "Morgan Lin is a recruiter at Northstar Talent who introduced Raphael to Adam Moore at Vector Labs and remains the active relay on that intro. Conversations are warm and recruiting-focused; the latest open thread is awaiting a nudge from Morgan to Adam.",
+    "tone": "warm",
+    "cadence": "weekly",
+    "status": "awaiting_them",
+    "tags": ["recruiter", "jobsearch"],
+    "draft_next_steps": [
+      {
+        "description": "Ping Morgan if Vector Labs hasn't surfaced by end of next week.",
+        "priority": "med",
+        "due_date": null,
+        "source_thread_ids": ["fix-thread-101"],
+        "source_message_ids": ["fix-msg-101b"],
+        "confidence": "med"
+      }
+    ],
+    "source_thread_ids": ["fix-thread-101", "fix-thread-103"],
+    "source_correction_ids": [],
+    "confidence": "high"
+  },
+  "rollup:adam@vectorlabs.io": {
+    "contact_email": "adam@vectorlabs.io",
+    "relationship_summary": "Adam Moore is a hiring manager at Vector Labs introduced via Morgan. The single thread on file is an open scheduling ask: Adam proposed Thursday 2pm and is awaiting Raphael's confirmation.",
+    "tone": "neutral",
+    "cadence": "rare",
+    "status": "awaiting_me",
+    "tags": ["recruiter", "jobsearch", "vector-labs"],
+    "draft_next_steps": [
+      {
+        "description": "Reply to Adam Moore confirming or counter-proposing the Thursday 2pm intro call.",
+        "priority": "high",
+        "due_date": null,
+        "source_thread_ids": ["fix-thread-102"],
+        "source_message_ids": ["fix-msg-102a"],
+        "confidence": "high"
+      }
+    ],
+    "source_thread_ids": ["fix-thread-102"],
+    "source_correction_ids": [],
     "confidence": "high"
   }
 }

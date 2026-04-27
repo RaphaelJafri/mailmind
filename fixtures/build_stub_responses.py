@@ -37,9 +37,10 @@ def _hash(model: str, system_instruction: str, user_prompt: str) -> str:
 
 
 def build_triage_entry(seed: dict, outputs: dict, model: str) -> dict:
-    # Mirror raw_reader's ORDER BY thread_count DESC, sender ASC. With one
-    # thread per sender in the fixture, the effective order is sender ASC.
-    sorted_threads = sorted(seed["threads"], key=lambda t: t["sender"])
+    # Triage only sees threads that loaded with disposition='unclassified'.
+    # Mirror raw_reader's ORDER BY thread_count DESC, sender ASC.
+    unclassified = [t for t in seed["threads"] if t.get("disposition") == "unclassified"]
+    sorted_threads = sorted(unclassified, key=lambda t: t["sender"])
     senders = []
     for t in sorted_threads:
         senders.append(
@@ -129,17 +130,136 @@ def build_tagger_entries(seed: dict, outputs: dict, model: str) -> dict:
                 "body": m["body_plain"],
                 "thread_disposition": t["disposition"],
             }
+            canned_key = f"tagger:{m['message_id']}"
+            if canned_key not in outputs:
+                # Tagger runs per-message_id on demand; we only need stubs
+                # for messages tests/acceptance actually call against.
+                continue
             user_prompt = (
                 "Tag the following message. Return one MessageTag JSON object.\n\n"
                 f"<message>\n{json.dumps(msg_payload, indent=2)}\n</message>"
             )
-            canned = outputs[f"tagger:{m['message_id']}"]
+            canned = outputs[canned_key]
             out[_hash(model, system, user_prompt)] = {
                 "output": json.dumps(canned),
                 "input_tokens": 400,
                 "output_tokens": 80,
                 "latency_ms": 30,
             }
+    return out
+
+
+def _build_contacts_index(seed: dict) -> dict[str, dict]:
+    """Mirror load_fixtures.mjs contacts upsert across ALL messages.
+
+    The loader locks `display_name` on first insert (ON CONFLICT does not
+    touch the column), so we replicate that: first appearance for an email
+    decides the name, and we never revise it.
+    """
+    contacts: dict[str, dict] = {}
+    for t in seed["threads"]:
+        # JS Set iteration: load_fixtures.mjs builds
+        #   `new Set([from, ...to, ...cc])`, then for-of's it. JS Set order
+        # is insertion order, so from_email is always seen first within a
+        # message.
+        for m in t["messages"]:
+            ordered: list[str] = []
+            seen: set[str] = set()
+            for email in (
+                [m["from_email"]] + list(m.get("to_emails") or []) + list(m.get("cc_emails") or [])
+            ):
+                if not email or email in seen:
+                    continue
+                seen.add(email)
+                ordered.append(email)
+
+            for email in ordered:
+                if email not in contacts:
+                    contacts[email] = {
+                        "email": email,
+                        "first_seen": m["internal_date"],
+                        "last_seen": m["internal_date"],
+                        "message_count": 0,
+                        "display_name": (
+                            m.get("from_name") if email == m["from_email"] else None
+                        ),
+                    }
+                entry = contacts[email]
+                entry["first_seen"] = min(entry["first_seen"], m["internal_date"])
+                entry["last_seen"] = max(entry["last_seen"], m["internal_date"])
+                entry["message_count"] += 1
+    return contacts
+
+
+def build_rollup_entries(seed: dict, outputs: dict, model: str) -> dict:
+    """Stub responses for relationship_agent.run(contact_email).
+
+    Mirrors `relationship_agent._build_payload()`:
+    - threads filtered to disposition in {keep, newsletter}, sorted ASC by
+      `threads.last_message_date` (which load_fixtures.mjs computes as the
+      max(internal_date) across the thread's messages);
+    - contact metadata pulled from a contacts index that aggregates all
+      seed messages, matching the loader's INSERT ... ON CONFLICT semantics.
+    """
+    out: dict = {}
+    system = pmod.compose_system_prompt(
+        "rollup.md",
+        schemas={"CONTACT_ROLLUP_SCHEMA": "contact-rollup.schema.json"},
+    )
+
+    contacts = _build_contacts_index(seed)
+    keep_threads = [
+        t for t in seed["threads"] if t.get("disposition") in {"keep", "newsletter"}
+    ]
+    by_contact: dict[str, list] = {}
+    for t in keep_threads:
+        by_contact.setdefault(t["sender"], []).append(t)
+
+    for contact_email, threads in by_contact.items():
+        canned_key = f"rollup:{contact_email}"
+        if canned_key not in outputs:
+            continue
+
+        # last_message_date column = max(message internal_date) per loader.
+        def _thread_last(t):
+            return max(m["internal_date"] for m in t["messages"])
+
+        threads_sorted = sorted(threads, key=_thread_last)
+        thread_facts = []
+        for t in threads_sorted:
+            facts = outputs[f"extract:{t['thread_id']}"]
+            thread_facts.append(
+                {
+                    "thread_id": t["thread_id"],
+                    "subject": t["subject"] or "",
+                    "last_message_date": _thread_last(t),
+                    "disposition": t["disposition"],
+                    "facts": facts,
+                }
+            )
+
+        c = contacts.get(contact_email, {})
+        payload = {
+            "contact_email": contact_email,
+            "display_name": c.get("display_name"),
+            "first_seen": c.get("first_seen"),
+            "last_seen": c.get("last_seen"),
+            "message_count": c.get("message_count", 0),
+            "thread_facts": thread_facts,
+            "corrections": [],
+            "previous_rollup": None,
+        }
+        user_prompt = (
+            "Roll up this contact. Return one ContactRollup JSON object.\n\n"
+            f"<contact>\n{json.dumps(payload, indent=2)}\n</contact>"
+        )
+        canned = outputs[canned_key]
+        out[_hash(model, system, user_prompt)] = {
+            "output": json.dumps(canned),
+            "input_tokens": 1500,
+            "output_tokens": 400,
+            "latency_ms": 60,
+        }
     return out
 
 
@@ -157,6 +277,7 @@ def main() -> None:
     stub.update(build_triage_entry(seed, outputs, model))
     stub.update(build_extract_entries(seed, outputs, model))
     stub.update(build_tagger_entries(seed, outputs, model))
+    stub.update(build_rollup_entries(seed, outputs, model))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(stub, indent=2))

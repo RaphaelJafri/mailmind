@@ -6,9 +6,12 @@ env or --port flag).
 P0 surface: /health.
 P1 surface: /triage/run, /triage/proposals, /triage/proposals/{id}/{decide},
             /extract/run, /tag/run, /tags, /agent_runs.
+P2 surface: /relationship/run, /contact_rollups, /reconcile/run,
+            /next_steps, /next_steps/{id}/dismiss, /cadence/run, /followups,
+            /corrections.
 
-Real agent endpoints land here. Other phases (relationship, drafts, query)
-extend in later milestones.
+Real agent endpoints land here. Other phases (drafts, query) extend in later
+milestones.
 """
 
 from __future__ import annotations
@@ -26,7 +29,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import cadence_runner
 import extract_agent
+import reconcile
+import relationship_agent
 import tagger_agent
 import triage_agent
 from lib import db, gemini_runner, paths, vertex_config
@@ -190,6 +196,100 @@ def tags(kind: str | None = None, value: str | None = None, limit: int = 200) ->
         "summary": tagger_agent.list_tag_summary(),
         "tags": tagger_agent.list_tags(kind=kind, value=value, limit=limit),
     }
+
+
+# ----- /relationship -------------------------------------------------------
+
+class RelationshipRunRequest(BaseModel):
+    contact_email: str | None = None
+    force: bool = False
+
+
+@app.post("/relationship/run")
+def relationship_run(req: RelationshipRunRequest | None = None) -> dict:
+    req = req or RelationshipRunRequest()
+    if req.contact_email:
+        try:
+            return relationship_agent.run(req.contact_email, force=req.force)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return relationship_agent.run_all(force=req.force)
+
+
+@app.get("/contact_rollups")
+def contact_rollups(limit: int = 100) -> dict:
+    rollups = relationship_agent.list_rollups(limit=limit)
+    return {"rollups": rollups, "count": len(rollups)}
+
+
+@app.get("/contact_rollups/{contact_email}")
+def contact_rollup(contact_email: str) -> dict:
+    r = relationship_agent.get_rollup(contact_email)
+    if r is None:
+        raise HTTPException(status_code=404, detail=f"no rollup for {contact_email!r}")
+    return r
+
+
+# ----- /reconcile + /next_steps -------------------------------------------
+
+class ReconcileRunRequest(BaseModel):
+    contact_email: str | None = None
+    dry_run: bool = False
+
+
+@app.post("/reconcile/run")
+def reconcile_run(req: ReconcileRunRequest | None = None) -> dict:
+    req = req or ReconcileRunRequest()
+    return reconcile.run(contact=req.contact_email, dry_run=req.dry_run)
+
+
+@app.get("/next_steps")
+def next_steps(status: str = "pending", limit: int = 200) -> dict:
+    rows = reconcile.list_next_steps(status=status, limit=limit)
+    return {"next_steps": rows, "count": len(rows)}
+
+
+class DismissRequest(BaseModel):
+    user_note: str | None = None
+
+
+@app.post("/next_steps/{step_id}/dismiss")
+def next_step_dismiss(step_id: str, req: DismissRequest | None = None) -> dict:
+    req = req or DismissRequest()
+    try:
+        return reconcile.dismiss_step(step_id, user_note=req.user_note)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/corrections")
+def corrections(limit: int = 100) -> dict:
+    rows = reconcile.list_corrections(limit=limit)
+    return {"corrections": rows, "count": len(rows)}
+
+
+# ----- /cadence + /followups ----------------------------------------------
+
+@app.post("/cadence/run")
+def cadence_run() -> dict:
+    return cadence_runner.run()
+
+
+@app.get("/followups")
+def followups(bucket: str | None = None) -> dict:
+    """Return the latest follow-up report.
+
+    `bucket=overdue` filters to overdue entries on both sides; `bucket=cold`
+    filters to cold; otherwise returns the full report.
+    """
+    report = cadence_runner.compute_followups()
+    if bucket in {"overdue", "cold"}:
+        report = {
+            **report,
+            "they_owe_you": [e for e in report["they_owe_you"] if e["urgency"] == bucket],
+            "you_owe_them": [e for e in report["you_owe_them"] if e["urgency"] == bucket],
+        }
+    return report
 
 
 # ----- /agent_runs ---------------------------------------------------------

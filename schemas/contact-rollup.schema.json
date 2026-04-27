@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ContactRollup",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contact_email",
+    "relationship_summary",
+    "tone",
+    "cadence",
+    "status",
+    "tags",
+    "draft_next_steps",
+    "source_thread_ids",
+    "confidence"
+  ],
+  "properties": {
+    "contact_email": { "type": "string", "minLength": 3 },
+    "relationship_summary": { "type": "string", "minLength": 1, "maxLength": 1200 },
+    "tone": {
+      "type": "string",
+      "enum": ["warm", "neutral", "transactional", "strained"]
+    },
+    "cadence": {
+      "type": "string",
+      "enum": ["daily", "weekly", "monthly", "rare"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "dormant", "awaiting_them", "awaiting_me"]
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "maxItems": 8
+    },
+    "draft_next_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "description",
+          "priority",
+          "source_thread_ids",
+          "source_message_ids",
+          "confidence"
+        ],
+        "properties": {
+          "description": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "priority": { "type": "string", "enum": ["low", "med", "high"] },
+          "due_date": { "type": ["string", "null"] },
+          "source_thread_ids": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "minItems": 1
+          },
+          "source_message_ids": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "minItems": 1
+          },
+          "confidence": { "type": "string", "enum": ["low", "med", "high"] }
+        }
+      }
+    },
+    "source_thread_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "source_correction_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "confidence": { "type": "string", "enum": ["low", "med", "high"] }
+  }
+}

@@ -67,6 +67,85 @@
           "is_from_user": false
         }
       ]
+    },
+    {
+      "thread_id": "fix-thread-101",
+      "subject": "Re: Vector Labs intro — any update?",
+      "sender": "morgan@northstar-talent.com",
+      "disposition": "keep",
+      "messages": [
+        {
+          "message_id": "fix-msg-101a",
+          "from_email": "morgan@northstar-talent.com",
+          "from_name": "Morgan Lin",
+          "to_emails": ["raphaeljafri@gmail.com"],
+          "cc_emails": [],
+          "subject": "Vector Labs intro — any update?",
+          "body_plain": "Quick check — has Adam at Vector reached out yet? Wanted to make sure the intro landed.",
+          "internal_date": "2026-04-18T09:30:00Z",
+          "is_from_user": false
+        },
+        {
+          "message_id": "fix-msg-101b",
+          "from_email": "raphaeljafri@gmail.com",
+          "from_name": "Raphael Jafri",
+          "to_emails": ["morgan@northstar-talent.com"],
+          "cc_emails": [],
+          "subject": "Re: Vector Labs intro — any update?",
+          "body_plain": "Not yet — can you nudge Adam? Happy to sit tight if you'd rather wait a few more days.",
+          "internal_date": "2026-04-19T10:00:00Z",
+          "is_from_user": true
+        }
+      ]
+    },
+    {
+      "thread_id": "fix-thread-102",
+      "subject": "Re: Quick call this week?",
+      "sender": "adam@vectorlabs.io",
+      "disposition": "keep",
+      "messages": [
+        {
+          "message_id": "fix-msg-102a",
+          "from_email": "adam@vectorlabs.io",
+          "from_name": "Adam Moore",
+          "to_emails": ["raphaeljafri@gmail.com"],
+          "cc_emails": [],
+          "subject": "Quick call this week?",
+          "body_plain": "Hi Raphael — Morgan put us in touch. Would Thursday at 2pm work for a 30-minute intro call? Happy to flex if needed.",
+          "internal_date": "2026-04-21T15:00:00Z",
+          "is_from_user": false
+        }
+      ]
+    },
+    {
+      "thread_id": "fix-thread-103",
+      "subject": "Heads up — moving teams",
+      "sender": "morgan@northstar-talent.com",
+      "disposition": "keep",
+      "messages": [
+        {
+          "message_id": "fix-msg-103a",
+          "from_email": "morgan@northstar-talent.com",
+          "from_name": "Morgan Lin",
+          "to_emails": ["raphaeljafri@gmail.com"],
+          "cc_emails": [],
+          "subject": "Heads up — moving teams",
+          "body_plain": "FYI I'm moving from the founder-recruiting desk to the eng-leadership desk next month. Same email, just a heads up.",
+          "internal_date": "2026-03-12T16:00:00Z",
+          "is_from_user": false
+        },
+        {
+          "message_id": "fix-msg-103b",
+          "from_email": "raphaeljafri@gmail.com",
+          "from_name": "Raphael Jafri",
+          "to_emails": ["morgan@northstar-talent.com"],
+          "cc_emails": [],
+          "subject": "Re: Heads up — moving teams",
+          "body_plain": "Got it, thanks for the heads up. Congrats on the move.",
+          "internal_date": "2026-03-13T08:00:00Z",
+          "is_from_user": true
+        }
+      ]
     }
   ]
 }

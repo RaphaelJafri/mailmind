@@ -137,3 +137,115 @@ export function listTags(opts: { kind?: string; value?: string; limit?: number }
     signal,
   );
 }
+
+// ----- Relationships / Followups -----
+
+export interface ContactRollup {
+  contact_email: string;
+  relationship_summary: string;
+  tone: "warm" | "neutral" | "transactional" | "strained";
+  cadence: "daily" | "weekly" | "monthly" | "rare";
+  status: "active" | "dormant" | "awaiting_them" | "awaiting_me";
+  tags: string[];
+  source_thread_ids: string[];
+  confidence: "low" | "med" | "high";
+  rolled_up_at: string;
+  model_version: string;
+}
+
+export function listRollups(limit = 100, signal?: AbortSignal) {
+  return getJson<{ rollups: ContactRollup[]; count: number }>(
+    `${AGENTS_URL}/contact_rollups?limit=${limit}`,
+    signal,
+  );
+}
+
+export function runRelationship(opts: { contact_email?: string; force?: boolean } = {}) {
+  return postJson<unknown>(`${AGENTS_URL}/relationship/run`, opts);
+}
+
+export interface NextStep {
+  id: string;
+  contact_email: string;
+  description: string;
+  priority: "low" | "med" | "high";
+  due_date: string | null;
+  status: string;
+  source_thread_ids: string[];
+  source_message_ids: string[];
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+  resolution_reason: string | null;
+  confidence: "low" | "med" | "high";
+}
+
+export function listNextSteps(status = "pending", signal?: AbortSignal) {
+  return getJson<{ next_steps: NextStep[]; count: number }>(
+    `${AGENTS_URL}/next_steps?status=${status}`,
+    signal,
+  );
+}
+
+export function dismissStep(stepId: string, user_note?: string) {
+  return postJson<{ id: string; correction_id: string; dismissed_at: string }>(
+    `${AGENTS_URL}/next_steps/${stepId}/dismiss`,
+    { user_note: user_note ?? null },
+  );
+}
+
+export function runReconcile(opts: { contact_email?: string; dry_run?: boolean } = {}) {
+  return postJson<{
+    run_id: string;
+    contacts_scanned: number;
+    totals: {
+      matched: number;
+      inserted: number;
+      resolved: number;
+      superseded: number;
+      dropped_dismissed: number;
+    };
+    pending_total: number;
+  }>(`${AGENTS_URL}/reconcile/run`, opts);
+}
+
+export interface FollowupEntry {
+  contact_email: string;
+  display_name: string | null;
+  thread_id: string;
+  subject: string;
+  last_message_date: string;
+  days_stale: number;
+  urgency: "overdue" | "waiting" | "cold";
+  expected_latency_days: number;
+  category: string;
+  rollup_status: string;
+}
+
+export interface FollowupReport {
+  generated_at: string;
+  metadata: {
+    they_owe_count: number;
+    they_owe_overdue: number;
+    you_owe_count: number;
+    you_owe_overdue: number;
+    stale_pending_steps: number;
+    thresholds_used: Record<string, number>;
+    latencies_used: Record<string, number>;
+  };
+  they_owe_you: FollowupEntry[];
+  you_owe_them: FollowupEntry[];
+  stale_pending_next_steps: Array<{
+    id: string;
+    contact_email: string;
+    description: string;
+    priority: string;
+    days_since_created: number;
+    confidence: string;
+  }>;
+}
+
+export function getFollowups(bucket?: "overdue" | "cold", signal?: AbortSignal) {
+  const q = bucket ? `?bucket=${bucket}` : "";
+  return getJson<FollowupReport>(`${AGENTS_URL}/followups${q}`, signal);
+}

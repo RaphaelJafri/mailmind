@@ -193,9 +193,10 @@ echo "$THREADS" | grep -q '"raw_db_present":true' || fail "ingester reports no r
 echo "$THREADS" | python3 -c "
 import sys,json
 d = json.loads(sys.stdin.read())
-assert d['count'] == 3, d
-" || fail "expected 3 fixture threads"
-ok "ingester /threads returned 3 fixture threads"
+# 3 unclassified (the P1 triage targets) + 3 pre-classified for P2 rollup.
+assert d['count'] >= 3, d
+" || fail "expected ≥3 fixture threads"
+ok "ingester /threads returned $(echo "$THREADS" | python3 -c "import sys,json;print(json.loads(sys.stdin.read())['count'])") fixture threads"
 
 CONTACTS=$(curl -sf "http://127.0.0.1:$INGESTER_PORT/contacts")
 CCNT=$(echo "$CONTACTS" | python3 -c "import sys,json; print(json.loads(sys.stdin.read())['count'])")
