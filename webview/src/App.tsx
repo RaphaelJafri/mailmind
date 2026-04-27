@@ -30,7 +30,7 @@ export default function App() {
     <div className="app">
       <header className="app__header">
         <span className="app__title">mailmind</span>
-        <span className="app__pill">P4a · drafts + approval gate</span>
+        <span className="app__pill">P4 · drafts + sends with approval gate</span>
         <nav className="tabs">
           {TABS.map((t) => (
             <button

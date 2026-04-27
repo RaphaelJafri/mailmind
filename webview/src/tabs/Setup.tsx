@@ -113,6 +113,19 @@ function PermissionsSection() {
     }
   }
 
+  async function flipSend(value: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await setPermissions({ gmail_send: value });
+      setPerms({ state: "ok", data: updated });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const composeOn = perms.state === "ok" && perms.data["gmail.compose"];
   const sendOn = perms.state === "ok" && perms.data["gmail.send"];
 
@@ -146,15 +159,31 @@ function PermissionsSection() {
           <span className="row__label">gmail.send</span>
           <span className="row__value">
             <span className={sendOn ? "status status--ok" : "status status--unknown"}>
-              {sendOn ? "granted" : "not granted (P4b)"}
+              {sendOn ? "granted" : "not granted"}
             </span>
             <button
               className="button"
               style={{ marginLeft: 12 }}
-              disabled
-              title="gmail.send is gated behind P4b. Toggle disabled in this build."
+              disabled={busy || (!sendOn && !composeOn)}
+              onClick={() => {
+                if (!sendOn) {
+                  const ok = window.confirm(
+                    "Enable gmail.send? Drafts you approve from now on can be sent " +
+                      "via Gmail after a 30s undo window. You can revoke this at any time."
+                  );
+                  if (!ok) return;
+                }
+                flipSend(!sendOn);
+              }}
+              title={
+                sendOn
+                  ? "Revoke gmail.send. Existing in-flight approvals will be refused at execute time."
+                  : composeOn
+                  ? "Enable Gmail send. Approve & Send button activates after grant."
+                  : "Grant gmail.compose first."
+              }
             >
-              Enable Gmail send (P4b)
+              {sendOn ? "Revoke" : "Enable Gmail send"}
             </button>
           </span>
         </div>

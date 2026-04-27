@@ -8,7 +8,10 @@
 #   4. /draft/generate writes a pending draft for fix-thread-102 with the
 #      cited fact "thursday_2pm_proposal".
 #   5. POST /permissions {gmail_compose:true} grants the scope.
-#   6. POST /permissions {gmail_send:true} is refused with 403 (P4b gate).
+#   6. POST /permissions {gmail_send:true} (without compose) is refused with
+#      400 compose_required — additive UX gate that survives into P4b. The
+#      P4a-era hard-403 was lifted in P4b; the safety guarantee ("no send
+#      until drafts work") is now enforced by the compose-required check.
 #   7. /drafts/{id}/approve creates an approval row, draft.status=approved.
 #   8. /drafts/{id}/save_as_gmail_draft executes against the mock gmail.compose
 #      seam (MAILMIND_GMAIL_MOCK=1), draft.status=saved_as_draft, audit row
@@ -158,12 +161,18 @@ print(f\"draft_id={g['draft_id']} confidence=high cited={len(d['cited_facts'])} 
 " || fail "generated draft failed structural checks"
 ok "/draft/generate wrote a pending draft for fix-thread-102"
 
-# ---------------- 7. /permissions: send refused, compose grant ---------
-step "agents: POST /permissions {gmail_send:true} → 403"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H 'Content-Type: application/json' \
+# ---------------- 7. /permissions: send refused (compose-required), compose grant ---
+step "agents: POST /permissions {gmail_send:true} without compose → 400"
+CODE=$(curl -s -o "$MAILMIND_LOGS_DIR/perm-400.json" -w "%{http_code}" \
+  -X POST -H 'Content-Type: application/json' \
   -d '{"gmail_send":true}' "http://127.0.0.1:$AGENTS_PORT/permissions")
-[[ "$CODE" == "403" ]] || fail "expected 403 for gmail_send toggle, got $CODE"
-ok "/permissions refuses gmail_send in P4a"
+[[ "$CODE" == "400" ]] || fail "expected 400 compose_required, got $CODE"
+python3 -c "
+import json
+d = json.load(open('$MAILMIND_LOGS_DIR/perm-400.json'))['detail']
+assert d['code'] == 'compose_required', d
+" || fail "wrong code on send-without-compose"
+ok "/permissions refuses gmail_send without compose first (additive UX gate)"
 
 step "agents: POST /permissions {gmail_compose:true} (grant the scope)"
 PERMS=$(curl -sf -X POST -H 'Content-Type: application/json' \

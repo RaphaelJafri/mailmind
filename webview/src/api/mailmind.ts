@@ -408,6 +408,18 @@ export function executeSaveAsDraft(draftId: string, approval_id: string) {
   }>(`${AGENTS_URL}/drafts/${draftId}/save_as_gmail_draft`, { approval_id });
 }
 
+export function executeSend(draftId: string, approval_id: string) {
+  return postJson<{
+    approval_id: string;
+    draft_id: string;
+    action: "send";
+    executed_at: string;
+    gmail_draft_id: string | null;
+    gmail_message_id: string | null;
+    next_status: "sent";
+  }>(`${AGENTS_URL}/drafts/${draftId}/send`, { approval_id });
+}
+
 export function rejectDraft(draftId: string, reason?: string) {
   return postJson<{ draft_id: string; rejected_at: string; reason: string | null }>(
     `${AGENTS_URL}/drafts/${draftId}/reject`,

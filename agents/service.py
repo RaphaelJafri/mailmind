@@ -13,6 +13,9 @@ P3 surface: /query (SSE), /query/tools.
 P4a surface: /draft/generate, /drafts (list/get/edit), /drafts/{id}/approve,
              /drafts/{id}/cancel, /drafts/{id}/save_as_gmail_draft,
              /drafts/{id}/reject, /audit_log, /permissions (read/grant).
+P4b surface: gmail.send unlocked behind the Settings toggle; /drafts/{id}/send
+             dispatches send_agent (which is the ONLY caller of
+             gmail.send per ARCHITECTURE.md).
 
 Real agent endpoints land here. Other phases (drafts, query) extend in later
 milestones.
@@ -41,6 +44,7 @@ import extract_agent
 import query_agent
 import reconcile
 import relationship_agent
+import send_agent
 import tagger_agent
 import triage_agent
 from lib import (
@@ -497,6 +501,30 @@ def drafts_save(draft_id: str, req: ExecuteRequest) -> dict:
     return result
 
 
+@app.post("/drafts/{draft_id}/send")
+def drafts_send(draft_id: str, req: ExecuteRequest) -> dict:
+    """P4b. Execute a send-action approval. Same shape as save_as_gmail_draft
+    but routes through `send_agent` — the only place in the codebase that
+    invokes gmail.send (per ARCHITECTURE.md invariant #1).
+
+    Refuses with 403 if `gmail.send` scope isn't granted. Refuses with 400
+    `hash_mismatch` if the draft body changed between approval and send.
+    Refuses with 400 `approval_expired` past the 5-min TTL.
+    """
+    try:
+        result = send_agent.run(req.approval_id)
+    except approval_lib.SendNotPermitted as exc:
+        raise HTTPException(status_code=403, detail={"code": exc.code, "message": str(exc)}) from exc
+    except approval_lib.ApprovalError as exc:
+        raise HTTPException(status_code=400, detail={"code": exc.code, "message": str(exc)}) from exc
+    if result["draft_id"] != draft_id:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "draft_mismatch", "message": "approval is not for this draft"},
+        )
+    return result
+
+
 class RejectRequest(BaseModel):
     reason: str | None = None
 
@@ -581,23 +609,29 @@ def permissions_set(req: PermissionsRequest) -> dict:
     if req.gmail_compose is not None:
         current["gmail.compose"] = bool(req.gmail_compose)
     if req.gmail_send is not None:
-        # P4a hard-refuse the toggle. The UI also disables it but a stray
-        # POST should be rejected with 403 instead of silently true-ing.
-        if req.gmail_send:
+        # P4b: granting gmail.send unlocks the Approve & Send button. The
+        # actual send still requires (a) an approval row whose hash matches
+        # the current draft body, and (b) the 30s undo window expiring on
+        # the client side. We belt-and-suspenders refuse if the user tries
+        # to grant send without first having compose — the UX is meant to
+        # be additive: drafts work, then sends.
+        if req.gmail_send and not current.get("gmail.compose"):
             raise HTTPException(
-                status_code=403,
+                status_code=400,
                 detail={
-                    "code": "send_not_supported_in_p4a",
-                    "message": "gmail.send is gated behind P4b. Toggle disabled in this build.",
+                    "code": "compose_required",
+                    "message": "Grant gmail.compose before enabling gmail.send.",
                 },
             )
-        current["gmail.send"] = False
+        current["gmail.send"] = bool(req.gmail_send)
     p.write_text(json.dumps(current, indent=2))
-    # Audit-log the grant/revoke for visibility.
+    # Audit-log the grant/revoke for visibility. Distinguish revoke (any
+    # explicit toggle to false) from grant.
+    granting = any([req.gmail_compose, req.gmail_send])
     with db.derived() as conn:
         approval_lib._append_audit(  # noqa: SLF001 — internal helper, intentional
             conn,
-            event_type="auth_grant" if any([req.gmail_compose, req.gmail_send]) else "auth_revoke",
+            event_type="auth_grant" if granting else "auth_revoke",
             payload=current,
         )
     return current

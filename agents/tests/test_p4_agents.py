@@ -461,16 +461,21 @@ def test_draft_full_flow_via_http(isolated_stub_env: Path) -> None:
     assert saved.json()["gmail_draft_id"].startswith("draft-")
 
 
-def test_send_toggle_refused_in_p4a(isolated_stub_env: Path) -> None:
+def test_send_toggle_requires_compose_first(isolated_stub_env: Path) -> None:
+    """gmail.send can't be granted without first granting gmail.compose. The
+    P4a-era hard-refuse (403 send_not_supported_in_p4a) is now an additive
+    requirement (400 compose_required) — same end-user behavior, different
+    wire shape. This guards the additive UX so the user can't accidentally
+    toggle send on without ever having tried drafts."""
     from fastapi.testclient import TestClient
 
     import service
 
     client = TestClient(service.app)
     res = client.post("/permissions", json={"gmail_send": True})
-    assert res.status_code == 403
+    assert res.status_code == 400
     detail = res.json()["detail"]
-    assert detail["code"] == "send_not_supported_in_p4a"
+    assert detail["code"] == "compose_required"
 
 
 def test_audit_log_endpoint_reports_chain(isolated_stub_env: Path) -> None:

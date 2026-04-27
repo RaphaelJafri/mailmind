@@ -883,3 +883,27 @@ code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.85rem;
 }
+
+/* P4b: Approve & Send distinct from Save (red-orange to draw the eye) */
+.button--send {
+  background: #fef2f2;
+  border-color: #dc2626;
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.button--send:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
+.button--send:disabled {
+  background: #f3f4f6;
+  color: #9ca3af;
+  border-color: #d4d4d4;
+  font-weight: 400;
+}
+
+.drafts__undo--send {
+  background: #fee2e2;
+  border-color: #dc2626;
+}

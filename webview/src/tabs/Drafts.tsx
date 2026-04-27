@@ -4,6 +4,7 @@ import {
   cancelApproval,
   editDraft,
   executeSaveAsDraft,
+  executeSend,
   generateDraft,
   getPermissions,
   listDrafts,
@@ -251,6 +252,20 @@ function DraftDetail({ draft, perms, onChanged }: DraftDetailProps) {
     }
   }
 
+  async function onApproveSend() {
+    setOutcome(null);
+    try {
+      const ap = await approveDraft(draft.id, { action: "send" });
+      setPending({
+        approval: ap,
+        countdownEnds: Date.now() + ap.undo_window_seconds * 1000,
+        cancelled: false,
+      });
+    } catch (err) {
+      setOutcome({ kind: "error", text: (err as Error).message });
+    }
+  }
+
   async function onCancelUndo() {
     if (!pending) return;
     setPending({ ...pending, cancelled: true });
@@ -280,13 +295,19 @@ function DraftDetail({ draft, perms, onChanged }: DraftDetailProps) {
     const remain = pending.countdownEnds - Date.now();
     if (remain <= 0) {
       let cancelled = false;
-      executeSaveAsDraft(draft.id, pending.approval.approval_id)
+      const isSend = pending.approval.action === "send";
+      const fire = isSend
+        ? executeSend(draft.id, pending.approval.approval_id)
+        : executeSaveAsDraft(draft.id, pending.approval.approval_id);
+      fire
         .then((res) => {
           if (cancelled) return;
           setPending(null);
           setOutcome({
             kind: "saved",
-            text: `Saved as Gmail draft ${res.gmail_draft_id ?? "(no id)"}.`,
+            text: isSend
+              ? `Sent. gmail_message_id ${res.gmail_message_id ?? "(no id)"}.`
+              : `Saved as Gmail draft ${res.gmail_draft_id ?? "(no id)"}.`,
           });
           onChanged();
         })
@@ -389,8 +410,13 @@ function DraftDetail({ draft, perms, onChanged }: DraftDetailProps) {
       </div>
 
       {pending && !pending.cancelled && (
-        <div className="drafts__undo">
-          <strong>Saving in {remainingSec}s</strong> — Click Cancel to abort.
+        <div className={`drafts__undo ${pending.approval.action === "send" ? "drafts__undo--send" : ""}`}>
+          <strong>
+            {pending.approval.action === "send"
+              ? `Sending in ${remainingSec}s`
+              : `Saving in ${remainingSec}s`}
+          </strong>{" "}
+          — Click Cancel to abort.
           <button className="button button--warn" onClick={onCancelUndo}>
             Cancel
           </button>
@@ -414,15 +440,18 @@ function DraftDetail({ draft, perms, onChanged }: DraftDetailProps) {
             Save as Gmail Draft
           </button>
           <button
-            className="button"
-            disabled
+            className="button button--send"
+            onClick={onApproveSend}
+            disabled={!sendGranted || dirty}
             title={
-              sendGranted
-                ? "Send is wired in P4b only."
-                : "gmail.send scope not granted (P4b)."
+              dirty
+                ? "Save your edits first."
+                : sendGranted
+                ? "Send via Gmail (30s undo window)."
+                : "Grant gmail.send first (Settings → Permissions)."
             }
           >
-            Approve & Send (P4b)
+            Approve &amp; Send
           </button>
           <button className="button button--warn" onClick={onReject}>
             Reject
