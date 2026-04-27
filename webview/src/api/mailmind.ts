@@ -174,6 +174,27 @@ export function listRollups(limit = 100, signal?: AbortSignal) {
   );
 }
 
+export interface ThreadFactsRow {
+  thread_id: string;
+  content_hash: string;
+  extracted_at: string;
+  model_version: string;
+  confidence: string;
+  facts: {
+    summary?: string;
+    participants?: string[];
+    commitments_by_user?: Array<{ description: string; due_date?: string | null; source_message_ids: string[] }>;
+    commitments_by_others?: Array<{ description: string; due_date?: string | null; source_message_ids: string[] }>;
+    open_questions?: Array<{ question?: string; description?: string; source_message_ids: string[] }>;
+    sentiment?: string;
+    topic_tags?: string[];
+  };
+}
+
+export function getThreadFacts(threadId: string, signal?: AbortSignal) {
+  return getJson<ThreadFactsRow>(`${AGENTS_URL}/thread_facts/${threadId}`, signal);
+}
+
 export function runRelationship(opts: { contact_email?: string; force?: boolean } = {}) {
   return postJson<unknown>(`${AGENTS_URL}/relationship/run`, opts);
 }
@@ -562,6 +583,102 @@ export function getLogTail(limit = 200, signal?: AbortSignal) {
     `${AGENTS_URL}/observability/log_tail?limit=${limit}`,
     signal,
   );
+}
+
+// ----- Labels + Eval (P5b) -----
+
+export type LabelKind = "thread" | "rollup" | "draft";
+
+export interface LabelRow {
+  id: string;
+  kind: LabelKind;
+  target_id: string;
+  expected: Record<string, unknown>;
+  labeled_at: string;
+  labeled_by: string;
+  version: number;
+  notes?: string;
+  extra?: Record<string, unknown>;
+}
+
+export interface LabelCounts {
+  thread: number;
+  rollup: number;
+  draft: number;
+  total: number;
+}
+
+export function listLabels(kind?: LabelKind, signal?: AbortSignal) {
+  const q = kind ? `?kind=${kind}` : "";
+  return getJson<{ labels: LabelRow[]; count: number; counts_by_kind: LabelCounts }>(
+    `${AGENTS_URL}/labels${q}`,
+    signal,
+  );
+}
+
+export function addLabel(req: {
+  kind: LabelKind;
+  target_id: string;
+  expected: Record<string, unknown>;
+  notes?: string;
+  extra?: Record<string, unknown>;
+}) {
+  return postJson<LabelRow>(`${AGENTS_URL}/labels`, req);
+}
+
+export function deleteLabel(label_id: string) {
+  // Re-using fetch directly since postJson is method-fixed.
+  return fetch(`${AGENTS_URL}/labels/${label_id}`, { method: "DELETE" }).then(async (res) => {
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`/labels/${label_id} → ${res.status}: ${t}`);
+    }
+    return (await res.json()) as { deleted: boolean; id: string };
+  });
+}
+
+export interface EvalRunResult {
+  run_id: string | null;
+  ran_at?: string;
+  ok: boolean;
+  reason?: string;
+  label_counts: LabelCounts;
+  metrics: Record<string, Record<string, number | null>>;
+  per_label: Array<{
+    label_id: string;
+    kind: LabelKind;
+    target_id: string;
+    ok: boolean;
+    error?: string;
+    stubbed?: boolean;
+    scores?: Record<string, number | boolean | null>;
+    judge_rationale?: string;
+  }>;
+  baseline_present: boolean;
+  regressions: Array<{ path: string; current: number; baseline: number; delta_pct: number }>;
+  judge_prompt_version?: string;
+}
+
+export function runEval(dry_run = false) {
+  return postJson<EvalRunResult>(`${AGENTS_URL}/eval/run`, { dry_run });
+}
+
+export function listEvalResults(limit = 20, signal?: AbortSignal) {
+  return getJson<{ results: EvalRunResult[]; count: number }>(
+    `${AGENTS_URL}/eval/results?limit=${limit}`,
+    signal,
+  );
+}
+
+export function getEvalBaseline(signal?: AbortSignal) {
+  return getJson<{ baseline: EvalRunResult | null; frozen: boolean }>(
+    `${AGENTS_URL}/eval/baseline`,
+    signal,
+  );
+}
+
+export function freezeEvalBaseline() {
+  return postJson<{ frozen_run_id: string; ran_at: string }>(`${AGENTS_URL}/eval/baseline/freeze`, {});
 }
 
 /**

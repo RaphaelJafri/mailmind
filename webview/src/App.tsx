@@ -9,6 +9,7 @@ import Ask from "./tabs/Ask";
 import Drafts from "./tabs/Drafts";
 import Sent from "./tabs/Sent";
 import Observability from "./tabs/Observability";
+import Eval from "./tabs/Eval";
 
 const TABS = [
   { id: "setup", label: "Settings", component: Setup },
@@ -21,6 +22,7 @@ const TABS = [
   { id: "drafts", label: "Drafts", component: Drafts },
   { id: "sent", label: "Sent", component: Sent },
   { id: "observability", label: "Observability", component: Observability },
+  { id: "eval", label: "Eval", component: Eval },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -32,7 +34,7 @@ export default function App() {
     <div className="app">
       <header className="app__header">
         <span className="app__title">mailmind</span>
-        <span className="app__pill">P5a · observability + cost guards</span>
+        <span className="app__pill">P5b · eval + labeling + LLM-as-judge</span>
         <nav className="tabs">
           {TABS.map((t) => (
             <button

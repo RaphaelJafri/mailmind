@@ -40,6 +40,7 @@ from pydantic import BaseModel
 
 import cadence_runner
 import draft_agent
+import eval_agent
 import extract_agent
 import query_agent
 import reconcile
@@ -53,6 +54,7 @@ from lib import (
     db,
     gemini_runner,
     gmail_writer,
+    labels as labels_lib,
     logging_setup,
     paths,
     query_tools,
@@ -247,6 +249,41 @@ def relationship_run(req: RelationshipRunRequest | None = None) -> dict:
 def contact_rollups(limit: int = 100) -> dict:
     rollups = relationship_agent.list_rollups(limit=limit)
     return {"rollups": rollups, "count": len(rollups)}
+
+
+@app.get("/thread_facts/{thread_id}")
+def thread_facts_get(thread_id: str) -> dict:
+    """Read-only view of `derived.sqlite::thread_facts` for one thread.
+
+    Used by the P5b labeling UI to pre-fill the "expected" fields with
+    the agent's current extraction before the user accepts/overrides.
+    Returns 404 if extract hasn't run on this thread yet.
+    """
+    import sqlite3
+
+    p = paths.derived_db_path()
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="derived.sqlite not found")
+    conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            "SELECT thread_id, content_hash, extracted_at, model_version, "
+            "facts_json, confidence FROM thread_facts WHERE thread_id = ?",
+            (thread_id,),
+        ).fetchone()
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(status_code=404, detail=f"thread_facts table missing: {exc}") from exc
+    finally:
+        conn.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"no thread_facts for {thread_id!r}")
+    out = dict(row)
+    try:
+        out["facts"] = json.loads(out.pop("facts_json") or "{}")
+    except Exception:  # noqa: BLE001
+        out["facts"] = {}
+    return out
 
 
 @app.get("/contact_rollups/{contact_email}")
@@ -734,6 +771,116 @@ def observability_budget() -> dict:
         "per_day_usd": caps.per_day_usd,
         "anomalies": caps.anomalies,
     }
+
+
+# ----- /labels + /eval (P5b) ----------------------------------------------
+#
+# Eval lifecycle:
+#   POST /labels {kind, target_id, expected, ...}     → append a label
+#   GET  /labels?kind=thread|rollup|draft             → live labels
+#   DELETE /labels/{id}                                → soft-delete (tombstone)
+#   POST /eval/run                                    → score every label,
+#                                                       append to results.jsonl
+#   GET  /eval/results?limit=N                        → recent eval runs
+#   GET  /eval/baseline                               → frozen baseline
+#   POST /eval/baseline/freeze                        → snapshot latest run
+
+class LabelAddRequest(BaseModel):
+    kind: str  # "thread" | "rollup" | "draft"
+    target_id: str
+    expected: dict
+    notes: str | None = None
+    extra: dict | None = None
+
+
+@app.post("/labels")
+def labels_add(req: LabelAddRequest) -> dict:
+    if req.kind not in ("thread", "rollup", "draft"):
+        raise HTTPException(status_code=400, detail={"code": "bad_kind", "message": f"unknown kind {req.kind!r}"})
+    try:
+        row = labels_lib.add_label(
+            kind=req.kind,  # type: ignore[arg-type]
+            target_id=req.target_id,
+            expected=req.expected,
+            labeled_by=os.environ.get("MAILMIND_APPROVER_EMAIL", "owner@mailmind.local"),
+            notes=req.notes,
+            extra=req.extra,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"code": "invalid_label", "message": str(exc)}) from exc
+    return json.loads(row.to_json())
+
+
+@app.get("/labels")
+def labels_list(kind: str | None = None) -> dict:
+    if kind is not None and kind not in ("thread", "rollup", "draft"):
+        raise HTTPException(status_code=400, detail=f"unknown kind {kind!r}")
+    rows = labels_lib.list_labels(kind=kind)  # type: ignore[arg-type]
+    return {
+        "labels": rows,
+        "count": len(rows),
+        "counts_by_kind": labels_lib.counts(),
+    }
+
+
+@app.get("/labels/{label_id}")
+def labels_get(label_id: str) -> dict:
+    row = labels_lib.get_label(label_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"label {label_id!r} not found")
+    return row
+
+
+@app.delete("/labels/{label_id}")
+def labels_delete(label_id: str) -> dict:
+    by = os.environ.get("MAILMIND_APPROVER_EMAIL", "owner@mailmind.local")
+    deleted = labels_lib.soft_delete(label_id, by=by)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"label {label_id!r} not found")
+    return {"deleted": True, "id": label_id}
+
+
+class EvalRunRequest(BaseModel):
+    dry_run: bool = False
+
+
+@app.post("/eval/run")
+def eval_run(req: EvalRunRequest | None = None) -> dict:
+    """Run the labeled set against the current agents.
+
+    Returns full per-label scoring + per-agent aggregates + regressions.
+    Note: this can be expensive if you've labeled many drafts (each
+    needs an LLM-as-judge call). Use sparingly during development.
+    """
+    req = req or EvalRunRequest()
+    return eval_agent.run(dry_run=req.dry_run)
+
+
+@app.get("/eval/results")
+def eval_results(limit: int = 20) -> dict:
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be in [1, 200]")
+    rows = eval_agent.list_results(limit=limit)
+    return {"results": rows, "count": len(rows)}
+
+
+@app.get("/eval/baseline")
+def eval_baseline() -> dict:
+    bl = eval_agent.get_baseline()
+    return {"baseline": bl, "frozen": bl is not None}
+
+
+@app.post("/eval/baseline/freeze")
+def eval_baseline_freeze() -> dict:
+    """Snapshot the most recent eval run as the regression reference.
+
+    Per BUILD §23: the user explicitly re-freezes when they're happy
+    with the new numbers (e.g. after adding labels or fixing a prompt).
+    """
+    try:
+        return eval_agent.freeze_baseline()
+    except LookupError as exc:
+        raise HTTPException(status_code=409, detail={"code": "no_results", "message": str(exc)}) from exc
 
 
 # ----- main ----------------------------------------------------------------
