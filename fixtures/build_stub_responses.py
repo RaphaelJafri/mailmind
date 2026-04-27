@@ -263,11 +263,81 @@ def build_rollup_entries(seed: dict, outputs: dict, model: str) -> dict:
     return out
 
 
+def build_query_entries(outputs: dict, model: str) -> dict:
+    """Stub responses for query_agent.run(question).
+
+    The agent's prompt at each turn is `(system, _format_transcript(question,
+    history))` — and `history` contains tool results that come from
+    `query_tools.call_tool(...)` against the live derived.sqlite. So this
+    builder runs the canned ReAct script *forward*, calling the real tools
+    between turns to produce the real history bytes the prompt will hash.
+
+    Requires derived.sqlite + raw.sqlite to be populated already (i.e. run
+    AFTER extract + relationship + reconcile). At first-pass time (no
+    rollups yet) this would silently produce useless stubs; we skip
+    altogether if the rollup table is empty.
+    """
+    out: dict = {}
+
+    # Late import: query_agent imports cadence_runner which imports raw_reader
+    # — none of these have side effects but we want to share REPO/agents path
+    # with the rest of the build.
+    from query_agent import _format_transcript, _truncate_tool_result  # noqa: WPS433
+    from lib import db as db_mod  # noqa: WPS433
+    from lib import query_tools as qt  # noqa: WPS433
+
+    # Bail fast if rollups haven't been populated — this build pass is meant
+    # for the *second* invocation in acceptance/p3.sh.
+    derived = db_mod.open_derived()
+    try:
+        n_rollups = derived.execute(
+            "SELECT COUNT(*) AS c FROM contact_rollups"
+        ).fetchone()["c"]
+    finally:
+        derived.close()
+    if n_rollups == 0:
+        return out
+
+    system = pmod.compose_system_prompt("query.md")
+
+    for key, value in outputs.items():
+        if not key.startswith("query:") or not isinstance(value, list):
+            continue
+        question = key.removeprefix("query:")
+        history: list[dict] = []
+        for turn in value:
+            user_prompt = _format_transcript(question, history)
+            out[_hash(model, system, user_prompt)] = {
+                "output": json.dumps(turn),
+                "input_tokens": 800,
+                "output_tokens": 80,
+                "latency_ms": 30,
+            }
+            history.append({"role": "agent", **turn})
+            if turn.get("action") != "tool_call":
+                break
+            tool_name = turn["tool"]
+            args = turn.get("args") or {}
+            try:
+                tool_result = qt.call_tool(tool_name, args)
+            except Exception as exc:  # noqa: BLE001
+                tool_result = {"error": f"{type(exc).__name__}: {exc}"}
+            history.append(
+                {
+                    "role": "tool",
+                    "tool": tool_name,
+                    "result": _truncate_tool_result(tool_result),
+                }
+            )
+    return out
+
+
 def main() -> None:
     if len(sys.argv) < 2:
-        print("usage: build_stub_responses.py <output_path>", file=sys.stderr)
+        print("usage: build_stub_responses.py <output_path> [--include-query]", file=sys.stderr)
         sys.exit(2)
     output_path = Path(sys.argv[1])
+    include_query = "--include-query" in sys.argv[2:]
 
     seed = json.loads(SEED_PATH.read_text())
     outputs = json.loads(OUTPUTS_PATH.read_text())
@@ -278,6 +348,8 @@ def main() -> None:
     stub.update(build_extract_entries(seed, outputs, model))
     stub.update(build_tagger_entries(seed, outputs, model))
     stub.update(build_rollup_entries(seed, outputs, model))
+    if include_query:
+        stub.update(build_query_entries(outputs, model))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(stub, indent=2))

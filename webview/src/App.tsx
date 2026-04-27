@@ -5,6 +5,7 @@ import Triage from "./tabs/Triage";
 import Tags from "./tabs/Tags";
 import Followups from "./tabs/Followups";
 import Contacts from "./tabs/Contacts";
+import Ask from "./tabs/Ask";
 
 const TABS = [
   { id: "setup", label: "Setup", component: Setup },
@@ -13,6 +14,7 @@ const TABS = [
   { id: "tags", label: "Tags", component: Tags },
   { id: "followups", label: "Follow-ups", component: Followups },
   { id: "contacts", label: "Contacts", component: Contacts },
+  { id: "ask", label: "Ask", component: Ask },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -24,7 +26,7 @@ export default function App() {
     <div className="app">
       <header className="app__header">
         <span className="app__title">mailmind</span>
-        <span className="app__pill">P2 · relationships</span>
+        <span className="app__pill">P3 · query + MCP</span>
         <nav className="tabs">
           {TABS.map((t) => (
             <button

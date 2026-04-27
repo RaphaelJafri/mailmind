@@ -9,6 +9,7 @@ P1 surface: /triage/run, /triage/proposals, /triage/proposals/{id}/{decide},
 P2 surface: /relationship/run, /contact_rollups, /reconcile/run,
             /next_steps, /next_steps/{id}/dismiss, /cadence/run, /followups,
             /corrections.
+P3 surface: /query (SSE), /query/tools.
 
 Real agent endpoints land here. Other phases (drafts, query) extend in later
 milestones.
@@ -17,6 +18,7 @@ milestones.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -27,15 +29,17 @@ from typing import Any
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 import cadence_runner
 import extract_agent
+import query_agent
 import reconcile
 import relationship_agent
 import tagger_agent
 import triage_agent
-from lib import db, gemini_runner, paths, vertex_config
+from lib import db, gemini_runner, paths, query_tools, vertex_config
 
 # Pin dotenv to mailmind/agents/.env only. Without an explicit path, dotenv
 # walks up the directory tree and picks up unrelated .env files (e.g. a
@@ -290,6 +294,51 @@ def followups(bucket: str | None = None) -> dict:
             "you_owe_them": [e for e in report["you_owe_them"] if e["urgency"] == bucket],
         }
     return report
+
+
+# ----- /query (P3 — ReAct over read-only tools) ---------------------------
+
+class QueryRunRequest(BaseModel):
+    question: str
+    max_tool_calls: int | None = None
+    max_wall_seconds: float | None = None
+
+
+@app.post("/query")
+def query_post(req: QueryRunRequest) -> StreamingResponse:
+    """Stream the ReAct loop as Server-Sent Events.
+
+    Each event is a single line of JSON, framed by SSE's `data:` prefix and a
+    blank line. The webview reads them with EventSource and renders thoughts +
+    tool calls + tool results live. The final two events are always `answer`
+    then `done` (or `error` then `done`).
+    """
+    if not req.question.strip():
+        raise HTTPException(status_code=400, detail="question is required")
+
+    kwargs: dict[str, Any] = {}
+    if req.max_tool_calls is not None:
+        kwargs["max_tool_calls"] = req.max_tool_calls
+    if req.max_wall_seconds is not None:
+        kwargs["max_wall_seconds"] = req.max_wall_seconds
+
+    def _stream() -> Any:
+        try:
+            for ev in query_agent.run(req.question, **kwargs):
+                yield f"data: {ev.to_json()}\n\n"
+        except Exception as exc:  # noqa: BLE001
+            err = json.dumps({"kind": "error", "error": f"{type(exc).__name__}: {exc}"})
+            yield f"data: {err}\n\n"
+            done = json.dumps({"kind": "done", "reason": "exception"})
+            yield f"data: {done}\n\n"
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+@app.get("/query/tools")
+def query_tools_list() -> dict:
+    """Manifest of read-only tools the query agent (and MCP server) expose."""
+    return {"tools": query_tools.manifest(), "count": len(query_tools.TOOLS)}
 
 
 # ----- /agent_runs ---------------------------------------------------------

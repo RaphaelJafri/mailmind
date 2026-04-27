@@ -221,5 +221,38 @@
     "source_thread_ids": ["fix-thread-102"],
     "source_correction_ids": [],
     "confidence": "high"
-  }
+  },
+  "_query_doc": "Each query:<question> entry below is a list of canned ReAct turns. The fixture builder replays the turns one-by-one, hashing the (system + transcript-so-far) prompt at each step and pairing it with the canned model JSON. Tool results between turns are produced live by query_tools against the populated derived.sqlite, so the test exercises the same code path the production driver does.",
+  "query:who am I ghosting?": [
+    {
+      "thought": "list overdue follow-ups so I know who's owed a reply",
+      "action": "tool_call",
+      "tool": "list_overdue",
+      "args": {}
+    },
+    {
+      "thought": "Adam Moore is the only one I owe; cite him",
+      "action": "answer",
+      "answer": "You owe Adam Moore (adam@vectorlabs.io) a reply on \"Re: Quick call this week?\" — 5d overdue, recruiting category. That's the only thread on your side right now."
+    }
+  ],
+  "query:what's pending with my recruiter?": [
+    {
+      "thought": "recruiter is a tag — search rollups for it",
+      "action": "tool_call",
+      "tool": "search_contacts",
+      "args": {"query": "recruiter"}
+    },
+    {
+      "thought": "Morgan is the recruiter; pull her full rollup to see pending steps",
+      "action": "tool_call",
+      "tool": "get_rollup",
+      "args": {"email": "morgan@northstar-talent.com"}
+    },
+    {
+      "thought": "one pending step + an 8d-overdue thread; surface both",
+      "action": "answer",
+      "answer": "Morgan Lin (Northstar Talent) — one pending next-step on file: ping her if Vector Labs hasn't surfaced by end of next week (med priority). She's also been waiting 8d on the Vector Labs intro nudge."
+    }
+  ]
 }

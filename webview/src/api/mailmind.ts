@@ -249,3 +249,79 @@ export function getFollowups(bucket?: "overdue" | "cold", signal?: AbortSignal) 
   const q = bucket ? `?bucket=${bucket}` : "";
   return getJson<FollowupReport>(`${AGENTS_URL}/followups${q}`, signal);
 }
+
+// ----- Query agent (P3) -----
+
+export interface QueryToolDef {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export function listQueryTools(signal?: AbortSignal) {
+  return getJson<{ tools: QueryToolDef[]; count: number }>(
+    `${AGENTS_URL}/query/tools`,
+    signal,
+  );
+}
+
+export type QueryEvent =
+  | { kind: "start"; question: string; model: string; started_at: string }
+  | { kind: "thought"; step: number; text: string }
+  | { kind: "tool_call"; step: number; tool: string; args: Record<string, unknown> }
+  | { kind: "tool_result"; step: number; tool: string; result_count: number | null; result: unknown }
+  | { kind: "answer"; answer: string; truncated: boolean; reason?: string }
+  | { kind: "done"; tool_calls: number; wall_ms: number; input_tokens: number; output_tokens: number; cost_usd: number; stubbed: boolean; truncated: boolean; reason: string | null }
+  | { kind: "error"; error: string };
+
+/**
+ * Open an SSE-style fetch against /query and call onEvent for each line of
+ * `data:` JSON. Returns an AbortController so the caller can cancel.
+ *
+ * fetch+streams instead of EventSource because EventSource is GET-only and
+ * we want POST with a body (the question).
+ */
+export function streamQuery(
+  question: string,
+  onEvent: (ev: QueryEvent) => void,
+): { abort: () => void; done: Promise<void> } {
+  const ctrl = new AbortController();
+  const done = (async () => {
+    const res = await fetch(`${AGENTS_URL}/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok || !res.body) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`/query → ${res.status}: ${text}`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    while (true) {
+      const { value, done: rd } = await reader.read();
+      if (rd) break;
+      buffer += decoder.decode(value, { stream: true });
+      // SSE event boundary is a blank line.
+      let idx;
+      while ((idx = buffer.indexOf("\n\n")) >= 0) {
+        const frame = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        const dataLines = frame
+          .split("\n")
+          .filter((l) => l.startsWith("data:"))
+          .map((l) => l.slice(5).trim());
+        if (!dataLines.length) continue;
+        try {
+          const ev = JSON.parse(dataLines.join("\n")) as QueryEvent;
+          onEvent(ev);
+        } catch {
+          // partial / malformed frame — skip
+        }
+      }
+    }
+  })();
+  return { abort: () => ctrl.abort(), done };
+}
